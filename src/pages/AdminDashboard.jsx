@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { supabase, isSupabaseConfigured } from '../lib/supabase'
+import { testDatabaseConnection } from '../utils/dbConnectionTest'
 import {
   Shield, Users, ShoppingBag, TrendingUp, Package, AlertCircle, CheckCircle2, Clock,
   FileText, BarChart3, Bell, Settings, LayoutDashboard, Search, Download, 
-  ChevronLeft, ChevronRight, X, Check, XCircle, Edit2, Key, Eye, LogOut
+  ChevronLeft, ChevronRight, X, Check, XCircle, Edit2, Key, Eye, LogOut, Database, Wifi, WifiOff
 } from 'lucide-react'
 
 const AdminDashboard = () => {
@@ -19,6 +21,14 @@ const AdminDashboard = () => {
   const [selectedUsers, setSelectedUsers] = useState(new Set())
   const [selectedShops, setSelectedShops] = useState(new Set())
   
+  // Database connection state
+  const [dbStatus, setDbStatus] = useState({
+    configured: isSupabaseConfigured,
+    connected: false,
+    testing: false,
+    error: null,
+  })
+
   // State management - TODO: Fetch from API
   const [state, setState] = useState({
     users: [], // TODO: Fetch from API
@@ -29,6 +39,115 @@ const AdminDashboard = () => {
     logs: [], // TODO: Fetch from API
     listing: { users: { page: 1, size: 10 }, shops: { page: 1, size: 10 } },
   })
+
+  // Fetch shops from Supabase
+  const fetchShops = useCallback(async () => {
+    if (!isSupabaseConfigured) return
+
+    try {
+      const { data, error } = await supabase
+        .from('shops')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Error fetching shops:', error)
+        return
+      }
+
+      if (data) {
+        // Transform data to match expected format
+        const transformedShops = data.map(shop => ({
+          id: shop.id,
+          name: shop.name || 'Unnamed Shop',
+          owner: shop.owner_name || 'Unknown Owner',
+          owner_id: shop.owner_id,
+          email: shop.email || '',
+          phone: shop.phone || '',
+          location: shop.location || '',
+          address: shop.address || '',
+          status: shop.status || 'pending',
+          services: shop.services || [],
+          description: shop.description || '',
+          operating_hours: shop.operating_hours || '',
+          tin: shop.tin || '',
+          credentials_url: shop.credentials_url || '',
+          valid_id_url: shop.valid_id_url || '',
+          shop_image_url: shop.shop_image_url || '',
+          created_at: shop.created_at,
+        }))
+
+        setState(prev => ({ ...prev, shops: transformedShops }))
+      }
+    } catch (err) {
+      console.error('Error fetching shops:', err)
+    }
+  }, [])
+
+  // Fetch users from Supabase
+  const fetchUsers = useCallback(async () => {
+    if (!isSupabaseConfigured) return
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Error fetching users:', error)
+        return
+      }
+
+      if (data) {
+        const transformedUsers = data.map(profile => ({
+          id: profile.id,
+          name: profile.full_name || profile.email?.split('@')[0] || 'Unknown',
+          email: profile.email || '',
+          role: profile.role || 'customer',
+          status: 'active',
+          phone: profile.phone || '',
+          joined: profile.created_at,
+        }))
+
+        setState(prev => ({ ...prev, users: transformedUsers }))
+      }
+    } catch (err) {
+      console.error('Error fetching users:', err)
+    }
+  }, [])
+
+  // Test database connection on mount
+  useEffect(() => {
+    const checkConnection = async () => {
+      if (!isSupabaseConfigured) {
+        setDbStatus({
+          configured: false,
+          connected: false,
+          testing: false,
+          error: 'Database not configured. Create .env file with Supabase credentials.',
+        })
+        return
+      }
+
+      setDbStatus(prev => ({ ...prev, testing: true }))
+      const result = await testDatabaseConnection()
+      setDbStatus({
+        configured: result.configured,
+        connected: result.connected,
+        testing: false,
+        error: result.error,
+      })
+
+      // If connected, fetch data
+      if (result.connected) {
+        fetchShops()
+        fetchUsers()
+      }
+    }
+
+    checkConnection()
+  }, [fetchShops, fetchUsers])
 
   // Filter states
   const [userSearch, setUserSearch] = useState('')
@@ -70,7 +189,7 @@ const AdminDashboard = () => {
     activeUsers: state.users.filter(u => u.status === 'active').length,
     pendingVerifications: state.shops.filter(s => s.status === 'pending').length,
     mechanicsOnline: state.users.filter(u => u.role === 'Mechanic' && u.status === 'active').length,
-    ordersToday: state.orders.length,
+    verifiedShops: state.shops.filter(s => s.status === 'verified').length,
   }
 
   // Calculate Analytics
@@ -161,11 +280,29 @@ const AdminDashboard = () => {
     }))
   }
 
-  const handleShopStatusChange = (shopId, newStatus) => {
-    setState(prev => ({
-      ...prev,
-      shops: prev.shops.map(s => s.id === shopId ? { ...s, status: newStatus } : s)
-    }))
+  const handleShopStatusChange = async (shopId, newStatus) => {
+    try {
+      // Update in database
+      const { error } = await supabase
+        .from('shops')
+        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .eq('id', shopId)
+
+      if (error) {
+        console.error('Error updating shop status:', error)
+        alert('Failed to update shop status')
+        return
+      }
+
+      // Update local state
+      setState(prev => ({
+        ...prev,
+        shops: prev.shops.map(s => s.id === shopId ? { ...s, status: newStatus } : s)
+      }))
+    } catch (err) {
+      console.error('Error:', err)
+      alert('Failed to update shop status')
+    }
   }
 
   const handleBulkUserActivate = () => {
@@ -192,31 +329,92 @@ const AdminDashboard = () => {
     setSelectedUsers(new Set())
   }
 
-  const handleBulkShopVerify = () => {
-    setState(prev => ({
-      ...prev,
-      shops: prev.shops.map(s => selectedShops.has(s.id) ? { ...s, status: 'verified' } : s)
-    }))
-    setSelectedShops(new Set())
+  const handleBulkShopVerify = async () => {
+    if (selectedShops.size === 0) {
+      alert('Please select at least one shop')
+      return
+    }
+
+    try {
+      // Update all selected shops in database
+      const shopIds = Array.from(selectedShops)
+      const { error } = await supabase
+        .from('shops')
+        .update({ status: 'verified', updated_at: new Date().toISOString() })
+        .in('id', shopIds)
+
+      if (error) {
+        console.error('Error bulk verifying shops:', error)
+        alert('Failed to verify shops')
+        return
+      }
+
+      setState(prev => ({
+        ...prev,
+        shops: prev.shops.map(s => selectedShops.has(s.id) ? { ...s, status: 'verified' } : s)
+      }))
+      setSelectedShops(new Set())
+    } catch (err) {
+      console.error('Error:', err)
+    }
   }
 
-  const handleBulkShopUnverify = () => {
-    setState(prev => ({
-      ...prev,
-      shops: prev.shops.map(s => selectedShops.has(s.id) ? { ...s, status: 'pending' } : s)
-    }))
-    setSelectedShops(new Set())
+  const handleBulkShopUnverify = async () => {
+    if (selectedShops.size === 0) {
+      alert('Please select at least one shop')
+      return
+    }
+
+    try {
+      const shopIds = Array.from(selectedShops)
+      const { error } = await supabase
+        .from('shops')
+        .update({ status: 'pending', updated_at: new Date().toISOString() })
+        .in('id', shopIds)
+
+      if (error) {
+        console.error('Error bulk unverifying shops:', error)
+        alert('Failed to unverify shops')
+        return
+      }
+
+      setState(prev => ({
+        ...prev,
+        shops: prev.shops.map(s => selectedShops.has(s.id) ? { ...s, status: 'pending' } : s)
+      }))
+      setSelectedShops(new Set())
+    } catch (err) {
+      console.error('Error:', err)
+    }
   }
 
-  const handleVerifyShop = (shopId) => {
-    handleShopStatusChange(shopId, 'verified')
+  const handleVerifyShop = async (shopId) => {
+    await handleShopStatusChange(shopId, 'verified')
   }
 
-  const handleRejectShop = (shopId) => {
-    setState(prev => ({
-      ...prev,
-      shops: prev.shops.filter(s => s.id !== shopId)
-    }))
+  const handleRejectShop = async (shopId) => {
+    try {
+      // Update status to 'rejected' in database (or delete)
+      const { error } = await supabase
+        .from('shops')
+        .update({ status: 'rejected', updated_at: new Date().toISOString() })
+        .eq('id', shopId)
+
+      if (error) {
+        console.error('Error rejecting shop:', error)
+        alert('Failed to reject shop')
+        return
+      }
+
+      // Remove from local state
+      setState(prev => ({
+        ...prev,
+        shops: prev.shops.filter(s => s.id !== shopId)
+      }))
+    } catch (err) {
+      console.error('Error:', err)
+      alert('Failed to reject shop')
+    }
   }
 
   const handleSendNotification = () => {
@@ -358,7 +556,23 @@ const AdminDashboard = () => {
           onSend={handleSendNotification}
         />
       case 'settings':
-        return <SettingsView prefs={prefs} onPrefsChange={setPrefs} />
+        return (
+          <SettingsView 
+            prefs={prefs} 
+            onPrefsChange={setPrefs}
+            dbStatus={dbStatus}
+            onTestConnection={async () => {
+              setDbStatus(prev => ({ ...prev, testing: true }))
+              const result = await testDatabaseConnection()
+              setDbStatus({
+                configured: result.configured,
+                connected: result.connected,
+                testing: false,
+                error: result.error,
+              })
+            }}
+          />
+        )
       default:
         return <DashboardView kpis={kpis} activity={state.activity} pendingShops={pendingShops} />
     }
@@ -410,6 +624,31 @@ const AdminDashboard = () => {
               <p className="text-sm text-gray-600 mt-1">Welcome back, {user?.name || 'Admin'}</p>
             </div>
             <div className="flex items-center space-x-4">
+              {/* Database Status Indicator */}
+              <div className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-sm ${
+                dbStatus.testing 
+                  ? 'bg-yellow-100 text-yellow-700' 
+                  : dbStatus.connected 
+                    ? 'bg-green-100 text-green-700' 
+                    : 'bg-red-100 text-red-700'
+              }`}>
+                {dbStatus.testing ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-yellow-600 border-t-transparent"></div>
+                    <span>Testing...</span>
+                  </>
+                ) : dbStatus.connected ? (
+                  <>
+                    <Wifi className="w-4 h-4" />
+                    <span>DB Connected</span>
+                  </>
+                ) : (
+                  <>
+                    <WifiOff className="w-4 h-4" />
+                    <span>DB Offline</span>
+                  </>
+                )}
+              </div>
               <div className="flex items-center space-x-2 bg-primary text-white px-4 py-2 rounded-lg">
                 <Shield className="w-5 h-5" />
                 <span className="font-semibold">Administrator</span>
@@ -451,8 +690,8 @@ const DashboardView = ({ kpis, activity, pendingShops }) => (
         <div className="text-3xl font-bold text-gray-900">{kpis.mechanicsOnline}</div>
       </div>
       <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
-        <div className="text-sm text-gray-600 mb-1">Orders Today</div>
-        <div className="text-3xl font-bold text-gray-900">{kpis.ordersToday}</div>
+        <div className="text-sm text-gray-600 mb-1">Verified Shops</div>
+        <div className="text-3xl font-bold text-green-600">{kpis.verifiedShops}</div>
       </div>
     </div>
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -776,36 +1015,248 @@ const ShopsView = ({
 }
 
 // Verifications View Component
-const VerificationsView = ({ pendingShops, onVerify, onReject }) => (
-  <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
-    <h2 className="text-lg font-semibold text-gray-900 mb-4">Shop Verification</h2>
-    <div className="space-y-3">
-      {pendingShops.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">No pending verifications</div>
-      ) : (
-        pendingShops.map(shop => (
-          <div key={shop.id} className="flex justify-between items-center p-4 border border-gray-200 rounded-lg">
-            <div className="text-sm font-medium text-gray-900">{shop.name} • {shop.owner}</div>
-            <div className="flex space-x-2">
-              <button
-                onClick={() => onVerify(shop.id)}
-                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark"
-              >
-                Approve
-              </button>
-              <button
-                onClick={() => onReject(shop.id)}
-                className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200"
-              >
-                Reject
-              </button>
-            </div>
+const VerificationsView = ({ pendingShops, onVerify, onReject }) => {
+  const [expandedShop, setExpandedShop] = useState(null)
+
+  const toggleExpand = (shopId) => {
+    setExpandedShop(expandedShop === shopId ? null : shopId)
+  }
+
+  return (
+    <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
+      <h2 className="text-lg font-semibold text-gray-900 mb-4">Shop Verification</h2>
+      <p className="text-sm text-gray-500 mb-6">Review and approve shop registration requests</p>
+      
+      <div className="space-y-4">
+        {pendingShops.length === 0 ? (
+          <div className="text-center py-12 text-gray-500">
+            <CheckCircle2 className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+            <p>No pending verifications</p>
           </div>
-        ))
-      )}
+        ) : (
+          pendingShops.map(shop => (
+            <div key={shop.id} className="border border-gray-200 rounded-lg overflow-hidden">
+              {/* Header - Always visible */}
+              <div 
+                className="flex justify-between items-center p-4 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
+                onClick={() => toggleExpand(shop.id)}
+              >
+                <div className="flex items-center space-x-4">
+                  {shop.shop_image_url ? (
+                    <img 
+                      src={shop.shop_image_url} 
+                      alt={shop.name} 
+                      className="w-12 h-12 rounded-lg object-cover border border-gray-200"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <ShoppingBag className="w-6 h-6 text-primary" />
+                    </div>
+                  )}
+                  <div>
+                    <div className="font-semibold text-gray-900">{shop.name}</div>
+                    <div className="text-sm text-gray-500">{shop.owner} • {shop.location || 'No location'}</div>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <span className="px-3 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded-full">
+                    Pending Review
+                  </span>
+                  <ChevronRight className={`w-5 h-5 text-gray-400 transition-transform ${expandedShop === shop.id ? 'rotate-90' : ''}`} />
+                </div>
+              </div>
+
+              {/* Expanded Details */}
+              {expandedShop === shop.id && (
+                <div className="p-6 border-t border-gray-200 bg-white">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Owner Information */}
+                    <div className="space-y-4">
+                      <h3 className="font-semibold text-gray-900 flex items-center">
+                        <Users className="w-4 h-4 mr-2 text-primary" />
+                        Owner Information
+                      </h3>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Full Name:</span>
+                          <span className="font-medium text-gray-900">{shop.owner || 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Email:</span>
+                          <span className="font-medium text-gray-900">{shop.email || 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Phone:</span>
+                          <span className="font-medium text-gray-900">{shop.phone || 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">TIN:</span>
+                          <span className="font-medium text-gray-900">{shop.tin || 'N/A'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Shop Information */}
+                    <div className="space-y-4">
+                      <h3 className="font-semibold text-gray-900 flex items-center">
+                        <ShoppingBag className="w-4 h-4 mr-2 text-primary" />
+                        Shop Information
+                      </h3>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Shop Name:</span>
+                          <span className="font-medium text-gray-900">{shop.name || 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Location:</span>
+                          <span className="font-medium text-gray-900">{shop.location || 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Address:</span>
+                          <span className="font-medium text-gray-900 text-right max-w-[200px]">{shop.address || 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Operating Hours:</span>
+                          <span className="font-medium text-gray-900">{shop.operating_hours || 'N/A'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Services */}
+                    <div className="space-y-4">
+                      <h3 className="font-semibold text-gray-900 flex items-center">
+                        <Settings className="w-4 h-4 mr-2 text-primary" />
+                        Services Offered
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {shop.services && shop.services.length > 0 ? (
+                          shop.services.map((service, idx) => (
+                            <span key={idx} className="px-3 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">
+                              {service}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-sm text-gray-500">No services listed</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Description */}
+                    <div className="space-y-4">
+                      <h3 className="font-semibold text-gray-900 flex items-center">
+                        <FileText className="w-4 h-4 mr-2 text-primary" />
+                        Description
+                      </h3>
+                      <p className="text-sm text-gray-600">
+                        {shop.description || 'No description provided'}
+                      </p>
+                    </div>
+
+                    {/* Documents */}
+                    <div className="md:col-span-2 space-y-4">
+                      <h3 className="font-semibold text-gray-900 flex items-center">
+                        <FileText className="w-4 h-4 mr-2 text-primary" />
+                        Uploaded Documents
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* Credentials */}
+                        <div className="border border-gray-200 rounded-lg p-4">
+                          <div className="text-sm font-medium text-gray-700 mb-2">Business Credentials</div>
+                          {shop.credentials_url ? (
+                            <a 
+                              href={shop.credentials_url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="flex items-center text-primary hover:underline text-sm"
+                            >
+                              <Eye className="w-4 h-4 mr-1" />
+                              View Document
+                            </a>
+                          ) : (
+                            <span className="text-sm text-gray-400">Not uploaded</span>
+                          )}
+                        </div>
+
+                        {/* Valid ID */}
+                        <div className="border border-gray-200 rounded-lg p-4">
+                          <div className="text-sm font-medium text-gray-700 mb-2">Valid ID</div>
+                          {shop.valid_id_url ? (
+                            <a 
+                              href={shop.valid_id_url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="flex items-center text-primary hover:underline text-sm"
+                            >
+                              <Eye className="w-4 h-4 mr-1" />
+                              View Document
+                            </a>
+                          ) : (
+                            <span className="text-sm text-gray-400">Not uploaded</span>
+                          )}
+                        </div>
+
+                        {/* Shop Image */}
+                        <div className="border border-gray-200 rounded-lg p-4">
+                          <div className="text-sm font-medium text-gray-700 mb-2">Shop Photo</div>
+                          {shop.shop_image_url ? (
+                            <a 
+                              href={shop.shop_image_url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="flex items-center text-primary hover:underline text-sm"
+                            >
+                              <Eye className="w-4 h-4 mr-1" />
+                              View Photo
+                            </a>
+                          ) : (
+                            <span className="text-sm text-gray-400">Not uploaded</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Submitted Date */}
+                    <div className="md:col-span-2 pt-4 border-t border-gray-200">
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-500">
+                          Submitted: {shop.created_at ? new Date(shop.created_at).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          }) : 'Unknown'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex justify-end space-x-3 mt-6 pt-4 border-t border-gray-200">
+                    <button
+                      onClick={() => onReject(shop.id)}
+                      className="px-6 py-2.5 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-medium transition-colors flex items-center"
+                    >
+                      <XCircle className="w-4 h-4 mr-2" />
+                      Reject Application
+                    </button>
+                    <button
+                      onClick={() => onVerify(shop.id)}
+                      className="px-6 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition-colors flex items-center"
+                    >
+                      <Check className="w-4 h-4 mr-2" />
+                      Approve & Verify
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))
+        )}
+      </div>
     </div>
-  </div>
-)
+  )
+}
 
 // Analytics View Component
 const AnalyticsView = ({ analytics, orders }) => (
@@ -1031,13 +1482,74 @@ const NotificationsView = ({
 )
 
 // Settings View Component
-const SettingsView = ({ prefs, onPrefsChange }) => {
+const SettingsView = ({ prefs, onPrefsChange, dbStatus, onTestConnection }) => {
   const handlePrefChange = (key, value) => {
     onPrefsChange({ ...prefs, [key]: value })
   }
 
+  const handleTestConnection = async () => {
+    if (onTestConnection) {
+      onTestConnection()
+    }
+  }
+
   return (
     <>
+      {/* Database Connection Status Card */}
+      <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
+            <Database className="w-5 h-5" />
+            <span>Database Connection</span>
+          </h2>
+          <button
+            onClick={handleTestConnection}
+            disabled={dbStatus?.testing}
+            className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+          >
+            {dbStatus?.testing ? 'Testing...' : 'Test Connection'}
+          </button>
+        </div>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+            <span className="text-sm font-medium text-gray-700">Status:</span>
+            <span className={`text-sm font-semibold ${
+              dbStatus?.connected ? 'text-green-600' : 'text-red-600'
+            }`}>
+              {dbStatus?.testing 
+                ? 'Testing...' 
+                : dbStatus?.connected 
+                  ? 'Connected' 
+                  : 'Not Connected'}
+            </span>
+          </div>
+          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+            <span className="text-sm font-medium text-gray-700">Configuration:</span>
+            <span className={`text-sm font-semibold ${
+              dbStatus?.configured ? 'text-green-600' : 'text-red-600'
+            }`}>
+              {dbStatus?.configured ? 'Configured' : 'Not Configured'}
+            </span>
+          </div>
+          {dbStatus?.error && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-sm text-red-700">{dbStatus.error}</p>
+              {!dbStatus.configured && (
+                <div className="mt-2 text-xs text-red-600">
+                  <p className="font-semibold mb-1">To connect the database:</p>
+                  <ol className="list-decimal list-inside space-y-1">
+                    <li>Create a <code className="bg-red-100 px-1 rounded">.env</code> file in the project root</li>
+                    <li>Add: <code className="bg-red-100 px-1 rounded">VITE_SUPABASE_URL=your_url</code></li>
+                    <li>Add: <code className="bg-red-100 px-1 rounded">VITE_SUPABASE_ANON_KEY=your_key</code></li>
+                    <li>Restart the development server</li>
+                  </ol>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Display Preferences</h2>

@@ -7,6 +7,7 @@ import Navbar from './components/Navbar'
 import Footer from './components/Footer'
 import EmergencyButton from './components/EmergencyButton'
 import ProtectedRoute from './components/ProtectedRoute'
+import ErrorBoundary from './components/ErrorBoundary'
 
 // Pages
 import Login from './pages/Login'
@@ -24,6 +25,10 @@ import Dashboard from './pages/Dashboard'
 import ShopDetails from './pages/ShopDetails'
 import AdminDashboard from './pages/AdminDashboard'
 import StoreDashboard from './pages/StoreDashboard'
+import ShopVerification from './pages/ShopVerification'
+import WaitingApproval from './pages/WaitingApproval'
+import { supabase } from './lib/supabase'
+import { useState, useEffect } from 'react'
 
 // Layout wrapper for pages that need navbar/footer
 const Layout = ({ children }) => {
@@ -46,6 +51,107 @@ const AdminLayout = ({ children }) => {
   )
 }
 
+// Component to check shop owner's shop status
+const ShopOwnerRoute = ({ children }) => {
+  const { user, loading: authLoading } = useAuth()
+  const [shopStatus, setShopStatus] = useState(null)
+  const [shopExists, setShopExists] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [checked, setChecked] = useState(false)
+
+  useEffect(() => {
+    const checkShopStatus = async () => {
+      if (!user || user.role !== 'store_owner') {
+        setLoading(false)
+        setChecked(true)
+        return
+      }
+
+      console.log('ShopOwnerRoute: Checking shop for user:', user.id, user.email)
+
+      try {
+        const { data, error } = await supabase
+          .from('shops')
+          .select('status')
+          .eq('owner_id', user.id)
+          .maybeSingle() // Use maybeSingle instead of single to avoid error when no rows
+
+        if (error) {
+          console.error('Error checking shop status:', error)
+        }
+
+        console.log('ShopOwnerRoute: Shop data:', data)
+
+        // Check if shop exists (verification submitted)
+        if (data) {
+          setShopExists(true)
+          setShopStatus(data.status)
+          console.log('ShopOwnerRoute: Shop exists with status:', data.status)
+        } else {
+          setShopExists(false)
+          setShopStatus(null)
+          console.log('ShopOwnerRoute: No shop found for this user')
+        }
+      } catch (err) {
+        console.error('ShopOwnerRoute Error:', err)
+      } finally {
+        setLoading(false)
+        setChecked(true)
+      }
+    }
+
+    if (!authLoading && user) {
+      checkShopStatus()
+    } else if (!authLoading && !user) {
+      setLoading(false)
+      setChecked(true)
+    }
+  }, [user, authLoading])
+
+  if (authLoading || loading || !checked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent"></div>
+      </div>
+    )
+  }
+
+  // LOGIC: Check if shop owner already submitted verification
+  console.log('ShopOwnerRoute: Making decision - shopExists:', shopExists, 'shopStatus:', shopStatus)
+  
+  // 1. No shop submitted yet → go to shop verification page
+  if (!shopExists) {
+    console.log('ShopOwnerRoute: Redirecting to /shop-verification')
+    return <Navigate to="/shop-verification" replace />
+  }
+
+  // 2. Shop submitted but NOT verified yet → go to waiting approval page
+  if (shopStatus !== 'verified') {
+    console.log('ShopOwnerRoute: Redirecting to /waiting-approval')
+    return <Navigate to="/waiting-approval" replace />
+  }
+
+  // 3. Shop is verified → show store dashboard
+  console.log('ShopOwnerRoute: Shop verified, showing dashboard')
+  return children
+}
+
+// Redirect shop owners away from profile setup - they go through shop verification flow
+const ProfileSetupRedirect = () => {
+  const { user } = useAuth()
+  
+  // Shop owners skip profile setup - redirect to store dashboard (ShopOwnerRoute handles the logic)
+  if (user?.role === 'store_owner') {
+    return <Navigate to="/store/dashboard" replace />
+  }
+  
+  return (
+    <div className="min-h-screen">
+      <ProfileSetup />
+    </div>
+  )
+}
+
 // Redirect based on auth state and role
 const HomeRedirect = () => {
   const { user, loading } = useAuth()
@@ -58,6 +164,12 @@ const HomeRedirect = () => {
     )
   }
 
+  // Shop owners skip profile setup and go directly to shop verification flow
+  if (user?.role === 'store_owner') {
+    return <Navigate to="/store/dashboard" replace />
+  }
+
+  // Other users need profile setup
   if (user?.needsSetup) {
     return <Navigate to="/profile-setup" replace />
   }
@@ -67,21 +179,18 @@ const HomeRedirect = () => {
     return <Navigate to="/admin/dashboard" replace />
   }
 
-  if (user?.role === 'store_owner') {
-    return <Navigate to="/store/dashboard" replace />
-  }
-
   return <Home />
 }
 
 function App() {
   return (
-    <AuthProvider>
-      <CartProvider>
-        <NotificationProvider>
-          <BookingProvider>
-            <Router>
-        <Routes>
+    <ErrorBoundary>
+      <AuthProvider>
+        <CartProvider>
+          <NotificationProvider>
+            <BookingProvider>
+              <Router>
+                <Routes>
           {/* Public Routes */}
           <Route
             path="/login"
@@ -105,9 +214,7 @@ function App() {
             path="/profile-setup"
             element={
               <ProtectedRoute allowSetup={true}>
-                <div className="min-h-screen">
-                  <ProfileSetup />
-                </div>
+                <ProfileSetupRedirect />
               </ProtectedRoute>
             }
           />
@@ -115,9 +222,7 @@ function App() {
             path="/complete-profile"
             element={
               <ProtectedRoute allowSetup={true}>
-                <div className="min-h-screen">
-                  <ProfileSetup />
-                </div>
+                <ProfileSetupRedirect />
               </ProtectedRoute>
             }
           />
@@ -207,10 +312,32 @@ function App() {
             path="/store/dashboard"
             element={
               <AdminLayout>
-                <ProtectedRoute requiredRole="store_owner">
-                  <StoreDashboard />
+                <ProtectedRoute requiredRole="store_owner" allowSetup={true}>
+                  <ShopOwnerRoute>
+                    <StoreDashboard />
+                  </ShopOwnerRoute>
                 </ProtectedRoute>
               </AdminLayout>
+            }
+          />
+          <Route
+            path="/shop-verification"
+            element={
+              <ProtectedRoute requiredRole="store_owner" allowSetup={true}>
+                <div className="min-h-screen">
+                  <ShopVerification />
+                </div>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/waiting-approval"
+            element={
+              <ProtectedRoute requiredRole="store_owner" allowSetup={true}>
+                <div className="min-h-screen">
+                  <WaitingApproval />
+                </div>
+              </ProtectedRoute>
             }
           />
 
@@ -235,12 +362,13 @@ function App() {
 
           {/* Catch all - redirect to home */}
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Router>
-          </BookingProvider>
-        </NotificationProvider>
-      </CartProvider>
-    </AuthProvider>
+                </Routes>
+              </Router>
+            </BookingProvider>
+          </NotificationProvider>
+        </CartProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   )
 }
 

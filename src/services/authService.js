@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase'
+import { supabase, isSupabaseConfigured } from '../lib/supabase'
 
 /**
  * Authentication Service
@@ -126,6 +126,9 @@ export const authService = {
    * Get the current session
    */
   async getSession() {
+    if (!isSupabaseConfigured) {
+      return { success: true, session: null }
+    }
     try {
       const { data: { session }, error } = await supabase.auth.getSession()
       if (error) throw error
@@ -154,9 +157,30 @@ export const authService = {
    * Listen to auth state changes
    */
   onAuthStateChange(callback) {
-    return supabase.auth.onAuthStateChange((event, session) => {
-      callback(event, session)
-    })
+    if (!isSupabaseConfigured) {
+      // Return a mock subscription object if Supabase isn't configured
+      return {
+        data: {
+          subscription: {
+            unsubscribe: () => {},
+          },
+        },
+      }
+    }
+    try {
+      return supabase.auth.onAuthStateChange((event, session) => {
+        callback(event, session)
+      })
+    } catch (error) {
+      console.error('Error setting up auth state listener:', error)
+      return {
+        data: {
+          subscription: {
+            unsubscribe: () => {},
+          },
+        },
+      }
+    }
   },
 }
 

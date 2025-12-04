@@ -71,10 +71,18 @@ const Login = () => {
         }
       } else {
         // Show error message with helpful note about registration
-        setError(result.error || 'Account not found or incorrect email/password. If you haven\'t registered yet, please sign up first.')
+        if (selectedRole === 'admin') {
+          setError('Invalid admin credentials. Only authorized administrators can access this portal.')
+        } else {
+          setError(result.error || 'Account not found or incorrect email/password. If you haven\'t registered yet, please sign up first.')
+        }
       }
     } catch (err) {
-      setError('Account not found or incorrect email/password. If you haven\'t registered yet, please sign up first.')
+      if (selectedRole === 'admin') {
+        setError('Invalid admin credentials. Only authorized administrators can access this portal.')
+      } else {
+        setError('Account not found or incorrect email/password. If you haven\'t registered yet, please sign up first.')
+      }
     } finally {
       setLoading(false)
     }
@@ -108,8 +116,8 @@ const Login = () => {
         
         // Redirect based on role
         if (selectedRole === 'store_owner') {
-          // Shop owners go to service booking page
-          navigate('/service-booking')
+          // Shop owners go to store dashboard (ShopOwnerRoute handles verification flow)
+          navigate('/store/dashboard')
         } else {
           // Other roles go to complete profile
           navigate('/complete-profile')
@@ -408,18 +416,30 @@ const Login = () => {
                 </button>
               </form>
 
-              <div className="mt-6 text-center">
-                <p className="text-gray-600 text-sm">
-                  Don't have an account?{' '}
-                  <button
-                    type="button"
-                    onClick={openSignUpModal}
-                    className="text-amber-600 font-semibold hover:underline"
-                  >
-                    Sign up
-                  </button>
-                </p>
-              </div>
+              {/* Hide signup link for admin */}
+              {selectedRole !== 'admin' && (
+                <div className="mt-6 text-center">
+                  <p className="text-gray-600 text-sm">
+                    Don't have an account?{' '}
+                    <button
+                      type="button"
+                      onClick={openSignUpModal}
+                      className="text-amber-600 font-semibold hover:underline"
+                    >
+                      Sign up
+                    </button>
+                  </p>
+                </div>
+              )}
+              
+              {/* Admin notice */}
+              {selectedRole === 'admin' && (
+                <div className="mt-6 text-center">
+                  <p className="text-gray-500 text-xs">
+                    Admin access is restricted to authorized personnel only.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>

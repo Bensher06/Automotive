@@ -46,6 +46,18 @@ export const AuthProvider = ({ children }) => {
     // Get initial session
     const initSession = async () => {
       try {
+        // Check for admin session in localStorage first
+        const storedAdmin = localStorage.getItem('motoZapp_admin')
+        if (storedAdmin) {
+          const adminUser = JSON.parse(storedAdmin)
+          if (mounted) {
+            setUser(adminUser)
+            setLoading(false)
+          }
+          return
+        }
+
+        // Regular Supabase session
         const sessionResult = await authService.getSession()
         if (sessionResult.success && sessionResult.session) {
           const authUser = sessionResult.session.user
@@ -71,6 +83,7 @@ export const AuthProvider = ({ children }) => {
         }
       } catch (error) {
         console.error('Error initializing session:', error)
+        // Don't crash the app - just set loading to false
       } finally {
         if (mounted) {
           setLoading(false)
@@ -78,47 +91,102 @@ export const AuthProvider = ({ children }) => {
       }
     }
 
+    // Add a timeout to ensure loading state doesn't hang forever
+    const timeout = setTimeout(() => {
+      if (mounted) {
+        setLoading(false)
+      }
+    }, 5000) // 5 second timeout
+
     initSession()
 
-    // Listen for auth state changes
-    const { data: { subscription } } = authService.onAuthStateChange(async (event, session) => {
-      if (!mounted) return
+    return () => {
+      clearTimeout(timeout)
+    }
 
-      if (event === 'SIGNED_IN' && session) {
-        try {
-          const profileResult = await profileService.getProfile(session.user.id)
-          if (profileResult.success) {
-            if (profileResult.data) {
-              const transformedUser = transformProfileToUser(session.user, profileResult.data)
-              setUser(transformedUser)
-            } else {
-              // Profile doesn't exist - create basic user
-              const basicUser = {
-                id: session.user.id,
-                email: session.user.email,
-                name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
-                role: session.user.user_metadata?.role || 'customer',
-                needsSetup: true,
+    // Listen for auth state changes
+    let subscription = null
+    try {
+      const authStateResult = authService.onAuthStateChange(async (event, session) => {
+        if (!mounted) return
+
+        if (event === 'SIGNED_IN' && session) {
+          try {
+            const profileResult = await profileService.getProfile(session.user.id)
+            if (profileResult.success) {
+              if (profileResult.data) {
+                const transformedUser = transformProfileToUser(session.user, profileResult.data)
+                setUser(transformedUser)
+              } else {
+                // Profile doesn't exist - create basic user
+                const basicUser = {
+                  id: session.user.id,
+                  email: session.user.email,
+                  name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
+                  role: session.user.user_metadata?.role || 'customer',
+                  needsSetup: true,
+                }
+                setUser(basicUser)
               }
-              setUser(basicUser)
             }
+          } catch (error) {
+            console.error('Error loading profile:', error)
           }
-        } catch (error) {
-          console.error('Error loading profile:', error)
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null)
         }
-      } else if (event === 'SIGNED_OUT') {
-        setUser(null)
-      }
-    })
+      })
+      subscription = authStateResult?.data?.subscription
+    } catch (error) {
+      console.error('Error setting up auth state listener:', error)
+    }
 
     return () => {
       mounted = false
-      subscription.unsubscribe()
+      if (subscription) {
+        try {
+          subscription.unsubscribe()
+        } catch (error) {
+          console.error('Error unsubscribing from auth state:', error)
+        }
+      }
     }
   }, [])
 
+  // Hardcoded admin accounts (local authentication - bypasses Supabase)
+  const allowedAdminAccounts = [
+    { email: 'evannfrancisco@gmail.com', password: 'francisco2005', name: 'Evann Francisco' },
+    { email: 'benh19193@gmail.com', password: 'ben35hassan', name: 'Ben Hassan' },
+    { email: 'chanshan04@gmail.com', password: '09354379568', name: 'Chan Shan' },
+  ]
+
   const login = async (email, password, role = 'customer') => {
     try {
+      // Special handling for admin accounts - bypass Supabase
+      if (role === 'admin') {
+        const adminAccount = allowedAdminAccounts.find(
+          admin => admin.email === email && admin.password === password
+        )
+        
+        if (adminAccount) {
+          // Create local admin session (no Supabase needed)
+          const adminUser = {
+            id: `admin-${email.replace(/[^a-z0-9]/gi, '-')}`,
+            email: adminAccount.email,
+            name: adminAccount.name,
+            role: 'admin',
+            needsSetup: false,
+          }
+          setUser(adminUser)
+          // Store in localStorage for persistence
+          localStorage.setItem('motoZapp_admin', JSON.stringify(adminUser))
+          return { success: true, user: adminUser }
+        } else {
+          return { success: false, error: 'Invalid admin credentials' }
+        }
+      }
+
+      // Regular Supabase authentication for non-admin users
       const result = await authService.signIn(email, password)
       
       if (result.success && result.user) {
@@ -219,11 +287,18 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
+      // Clear admin session from localStorage
+      localStorage.removeItem('motoZapp_admin')
+      
+      // Clear Supabase session
       await authService.signOut()
       setUser(null)
       return { success: true }
     } catch (error) {
       console.error('Logout error:', error)
+      // Still clear local state even if Supabase fails
+      localStorage.removeItem('motoZapp_admin')
+      setUser(null)
       return { success: false, error: error.message }
     }
   }
