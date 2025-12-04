@@ -1,0 +1,72 @@
+Chapter 1 – Project Overview
+
+
+1.1.	Product Overview
+
+The automotive service industry in Zamboanga City is currently fragmented. Motorcycle riders often struggle to locate available parts across different shops, forcing them to visit multiple locations physically to find specific items. Additionally, when mechanical breakdowns occur on the road, finding an immediate, reliable mechanic is difficult and often relies on word-of-mouth or chance.
+
+On the business side, many small to medium-sized automotive parts shops and service centers lack an online presence. They operate manually, limiting their reach to walk-in customers and making inventory management inefficient. They miss out on the digital market that platforms like Shopee or TikTok Shop utilize, but specifically tailored for the local automotive context.
+
+The proposed system is a Multi-Vendor Automotive Services and Parts Marketplace with GPS-Integrated On-Call Mechanics. It serves as a centralized platform where Store Owners can register their shops to sell parts and accept service bookings, Mechanics can find on-call work, and Customers can access a one-stop-shop for emergency repairs, parts shopping, and service scheduling
+
+1.2.	Project Site
+
+The project is a cloud-based platform designed for implementation within Zamboanga City.
+•	Physical Scope: The system connects customers with registered shops and mechanics within the city limits using GPS geolocation.
+•	Digital Scope: Accessible via a Web Dashboard (for Admins and Store Owners) and a Mobile Application (for Customers and Mechanics)
+
+1.3.	Market Context
+Instead of serving a single enterprise, this system targets the broader automotive community:
+1.	Local Automotive Shops (Store Owners): Small to medium enterprises that wish to digitize their inventory and offer online booking without developing their own expensive apps.
+2.	Freelance & Shop Mechanics: Skilled individuals seeking a streamlined way to receive service requests and track earnings.
+3.	Motorcycle Riders (Public): The general public who requires immediate roadside assistance or a convenient way to shop for motorcycle parts from various local vendors.
+
+1.4.	Proposed Solution
+1.4.1.	Product Summary
+This system functions as a "generic" platform, a bridge between automotive service providers and motorcycle riders. It acts similarly to a marketplace application (like Shopee) but is specialized for the automotive industry.
+•	For Store Owners: It provides a portal to register their business, upload product catalogs, and manage appointment slots for repairs.
+•	For Customers: It offers an "Emergency Call" button to summon the nearest mechanic via GPS, and a "Marketplace" to browse parts from different registered stores or book services.
+•	For System Admins: It allows for the verification of legitimate shops and mechanics to ensure safety and quality.
+
+
+1.4.2.	List of Features
+For Customers 
+
+●	User Account Creation & Profile 
+●	On-Call Mechanic Request 
+●	GPS-Based Mechanic Finder / Emergency On-Call Mechanic (GPS)
+●	Real-Time Tracking 
+●	Online Shopping & Ordering
+●	Multi-Vendor Marketplace 
+●	Service History 
+●	Notifications & Alerts 
+●	Online Booking/Reservation / Service Booking
+●	Shop & Mechanic Reviews
+
+For Mechanics
+
+●	Mechanic Registration & Profile 
+●	Service Request Management 
+●	GPS Navigation
+●	Job Tracking 
+●	Earnings Dashboard 
+●	Ratings & Reviews 
+
+For Shops / Business Owners
+ 
+●	Shop Registration
+●	Vendor Dashboard
+●	Sales & Order Management / Product/Inventory Management
+●	Reports & Analytics 
+●	Service Request Monitoring 
+●	Booking Management
+●	Order Fulfillment
+
+For Admin 
+
+●	User Management 
+●	System Monitoring 
+●	Reports & Analytics 
+●	Notifications Management
+●	Shop Verification
+

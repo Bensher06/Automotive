@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Business Analytics - Reports</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <link rel="stylesheet" href="css/StoreOwnerHomepage.css">
+    <link rel="stylesheet" href="css/ReportsPage.css">
+    <script src="js/AvatarManager.js" defer></script>
+    <script src="js/ShopSettingsManager.js" defer></script>
+    <script src="js/closeButtons.js" defer></script>
+    <script src="js/ReportsPage.js" defer></script>
+</head>
+<body>
+
+    <!-- Sidebar Navigation -->
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <a href="AdminDashboard.html" class="sidebar-logo">Admin</a>
+            <button class="sidebar-toggle sidebar-toggle-btn" id="sidebar-toggle" type="button" aria-label="Toggle sidebar">
+                <i class="fas fa-bars"></i>
+            </button>
+        </div>
+        
+        <ul class="sidebar-menu">
+            <li><a href="AdminDashboard.html"><i class="fas fa-grip"></i><span>Overview</span></a></li>
+            <li><a href="ProfitPage.html"><i class="fas fa-chart-pie"></i><span>Profit</span></a></li>
+            <li><a href="ProductsPage.html"><i class="fas fa-box"></i><span>Products</span></a></li>
+            <li><a href="BookingManagerPage.html"><i class="fas fa-calendar-alt"></i><span>Bookings</span></a></li>
+            <li><a href="SettingsPage.html"><i class="fas fa-sliders-h"></i><span>Settings</span></a></li>
+        </ul>
+        
+        <div class="sidebar-footer">
+            <a href="#" onclick="event.preventDefault(); alert('Logout functionality coming soon!'); return false;">
+                <i class="fas fa-arrow-right-from-bracket"></i><span>Logout</span>
+            </a>
+        </div>
+    </nav>
+
+    <!-- Overlay for mobile -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <a href="AdminDashboard.html" class="reports-back-btn" aria-label="Back to dashboard">
+                <span class="back-btn-icon">
+                    <i class="fas fa-arrow-left"></i>
+                </span>
+                <span class="back-btn-text">Back</span>
+            </a>
+            <h1>Business Analytics</h1>
+            <div class="header-icons">
+                <a href="SettingsPage.html" class="settings-btn" aria-label="Open Settings" target="_blank" rel="noopener noreferrer">
+                    <i class="fas fa-cog" aria-hidden="true"></i>
+                </a>
+                <button class="notification-bell" type="button" aria-label="View notifications">
+                    <i class="fas fa-bell" aria-hidden="true"></i>
+                    <span class="notification-badge" aria-hidden="true">2</span>
+                </button>
+                <a href="ProfilePage.html">
+                    <img src="https://i.pravatar.cc/100?img=12" alt="Store owner avatar" class="profile-avatar" loading="lazy">
+                </a>
+            </div>
+        </header>
+
+        <main>
+            <!-- Header Controls -->
+            <section class="reports-header-controls">
+                <div class="date-range-selector">
+                    <label for="date-range">Date Range:</label>
+                    <select id="date-range" class="date-range-select">
+                        <option value="7">Last 7 Days</option>
+                        <option value="30">This Month</option>
+                        <option value="90">Last 3 Months</option>
+                        <option value="365">Year to Date</option>
+                    </select>
+                </div>
+            </section>
+
+            <!-- Summary Cards -->
+            <section class="reports-summary-cards">
+                <div class="summary-card revenue-card">
+                    <div class="summary-card-header">
+                        <i class="fas fa-dollar-sign"></i>
+                        <span class="summary-badge positive" id="revenue-badge">+12.5%</span>
+                    </div>
+                    <div class="summary-card-content">
+                        <label class="summary-label">Total Revenue</label>
+                        <div class="summary-value" id="total-revenue">₱125,450</div>
+                    </div>
+                </div>
+
+                <div class="summary-card profit-card">
+                    <div class="summary-card-header">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <div class="summary-card-content">
+                        <label class="summary-label">Net Profit</label>
+                        <div class="summary-value" id="net-profit">₱43,907</div>
+                        <div class="summary-subtext">Revenue - COGS</div>
+                    </div>
+                </div>
+
+                <div class="summary-card efficiency-card">
+                    <div class="summary-card-header">
+                        <i class="fas fa-tools"></i>
+                    </div>
+                    <div class="summary-card-content">
+                        <label class="summary-label">Service Efficiency</label>
+                        <div class="summary-value" id="service-count">142</div>
+                        <div class="summary-subtext">Bikes/Cars Serviced</div>
+                    </div>
+                </div>
+
+                <div class="summary-card channel-card">
+                    <div class="summary-card-header">
+                        <i class="fas fa-store"></i>
+                    </div>
+                    <div class="summary-card-content">
+                        <label class="summary-label">Online vs Instore</label>
+                        <div class="summary-value" id="online-ratio">30%</div>
+                        <div class="summary-subtext">Online Orders</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Charts Section -->
+            <section class="reports-charts">
+                <div class="chart-card revenue-breakdown-card">
+                    <div class="chart-header">
+                        <h3>Revenue Breakdown</h3>
+                        <p class="chart-subtitle">Parts Sales vs Labor/Service Fees</p>
+                    </div>
+                    <div class="chart-container-large">
+                        <canvas id="revenueBreakdownChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-card sales-channel-card">
+                    <div class="chart-header">
+                        <h3>Sales Channel</h3>
+                        <p class="chart-subtitle">Online Orders vs Walk-in Customers</p>
+                    </div>
+                    <div class="chart-container-donut">
+                        <canvas id="salesChannelChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Detailed Tables Section -->
+            <section class="reports-tables">
+                <div class="table-card top-parts-card">
+                    <div class="table-header">
+                        <h3>Top Moving Parts</h3>
+                        <p class="table-subtitle">Best selling parts for restocking decisions</p>
+                    </div>
+                    <div class="table-container">
+                        <table class="reports-table">
+                            <thead>
+                                <tr>
+                                    <th>Rank</th>
+                                    <th>Part Name</th>
+                                    <th>Quantity Sold</th>
+                                    <th>Revenue</th>
+                                </tr>
+                            </thead>
+                            <tbody id="top-parts-table-body">
+                                <!-- Will be populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="table-card top-services-card">
+                    <div class="table-header">
+                        <h3>Top Services</h3>
+                        <p class="table-subtitle">Most requested services</p>
+                    </div>
+                    <div class="table-container">
+                        <table class="reports-table">
+                            <thead>
+                                <tr>
+                                    <th>Rank</th>
+                                    <th>Service Name</th>
+                                    <th>Count</th>
+                                    <th>Revenue</th>
+                                </tr>
+                            </thead>
+                            <tbody id="top-services-table-body">
+                                <!-- Will be populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="js/closeButtons.js" defer></script>
+    <script src="js/StoreOwnerHomepage.js" defer></script>
+
+</body>
+</html>
+

@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Profile - Admin Dashboard</title>
+
+    <!-- Google Fonts: Poppins -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Local files -->
+    <link rel="stylesheet" href="css/StoreOwnerHomepage.css">
+    <link rel="stylesheet" href="css/ProfilePage.css">
+    <script src="js/AvatarManager.js" defer></script>
+    <script src="js/ShopSettingsManager.js" defer></script>
+    <script src="js/StoreOwnerHomepage.js" defer></script>
+    <script src="js/ProfilePage.js" defer></script>
+</head>
+<body>
+
+    <!-- Sidebar Navigation -->
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <a href="AdminDashboard.html" class="sidebar-logo">Admin</a>
+            <button class="sidebar-toggle sidebar-toggle-btn" id="sidebar-toggle" type="button" aria-label="Toggle sidebar">
+                <i class="fas fa-bars"></i>
+            </button>
+        </div>
+        
+        <ul class="sidebar-menu">
+            <li><a href="AdminDashboard.html"><i class="fas fa-grip"></i><span>Overview</span></a></li>
+            <li><a href="ProfitPage.html"><i class="fas fa-chart-pie"></i><span>Profit</span></a></li>
+            <li><a href="ProductsPage.html"><i class="fas fa-box"></i><span>Products</span></a></li>
+            <li><a href="BookingManagerPage.html"><i class="fas fa-calendar-alt"></i><span>Bookings</span></a></li>
+            <li><a href="ProfilePage.html" class="active"><i class="fas fa-user"></i><span>Profile</span></a></li>
+            <li><a href="SettingsPage.html"><i class="fas fa-sliders-h"></i><span>Settings</span></a></li>
+        </ul>
+        
+        <div class="sidebar-footer">
+            <a href="#" onclick="event.preventDefault(); alert('Logout functionality coming soon!'); return false;">
+                <i class="fas fa-arrow-right-from-bracket"></i><span>Logout</span>
+            </a>
+        </div>
+    </nav>
+
+    <!-- Overlay for mobile -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <a href="AdminDashboard.html" class="profile-back-btn" aria-label="Back to dashboard">
+                <span class="back-btn-icon">
+                    <i class="fas fa-arrow-left"></i>
+                </span>
+                <span class="back-btn-text">Back</span>
+            </a>
+            <h1>My Profile</h1>
+            <div class="header-icons">
+                <a href="SettingsPage.html" class="settings-btn" aria-label="Open Settings" target="_blank" rel="noopener noreferrer">
+                    <i class="fas fa-cog" aria-hidden="true"></i>
+                </a>
+                <button class="notification-bell" type="button" aria-label="View notifications">
+                    <i class="fas fa-bell" aria-hidden="true"></i>
+                    <span class="notification-badge" aria-hidden="true">2</span>
+                </button>
+                <a href="ProfilePage.html">
+                    <img src="https://i.pravatar.cc/100?img=12" alt="Store owner avatar" class="profile-avatar" loading="lazy">
+                </a>
+            </div>
+        </header>
+
+        <main>
+            <div class="profile-content">
+                <!-- Card A: Personal Profile -->
+                <div class="profile-card">
+                    <div class="profile-card-header">
+                        <h2>Personal Profile</h2>
+                    </div>
+                    <div class="profile-card-body">
+                        <!-- Avatar Upload -->
+                        <div class="form-group avatar-upload-group">
+                            <label class="form-label">Profile Picture</label>
+                            <div class="avatar-upload-container">
+                                <div class="avatar-preview">
+                                    <img src="https://i.pravatar.cc/100?img=12" alt="Profile" id="avatar-preview" class="avatar-preview-img">
+                                    <div class="avatar-overlay">
+                                        <i class="fas fa-camera"></i>
+                                        <span>Change Photo</span>
+                                    </div>
+                                </div>
+                                <input type="file" id="avatar-upload" accept="image/*" class="avatar-input" aria-label="Upload profile picture">
+                            </div>
+                        </div>
+
+                        <!-- Full Name -->
+                        <div class="form-group">
+                            <label for="full-name" class="form-label">Full Name</label>
+                            <input type="text" id="full-name" class="form-input" placeholder="Enter your full name" value="John Doe">
+                        </div>
+
+                        <!-- Email Address (Read-only) -->
+                        <div class="form-group">
+                            <label for="email" class="form-label">Email Address</label>
+                            <input type="email" id="email" class="form-input" value="john.doe@example.com" readonly>
+                            <span class="form-help-text">Email cannot be changed</span>
+                        </div>
+
+                        <!-- Change Password Button -->
+                        <div class="form-group">
+                            <button type="button" class="btn-change-password" id="change-password-btn">
+                                <i class="fas fa-key"></i>
+                                <span>Change Password</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card B: Shop Settings -->
+                <div class="profile-card">
+                    <div class="profile-card-header">
+                        <h2>Shop Settings</h2>
+                        <p class="profile-card-subtitle">This information will appear on printed receipts</p>
+                    </div>
+                    <div class="profile-card-body">
+                        <!-- Shop Front Image Upload -->
+                        <div class="form-group">
+                            <label class="form-label">Shop Front Image</label>
+                            <div class="shop-logo-upload-container">
+                                <div class="shop-logo-upload-box" id="shop-logo-upload-box">
+                                    <input type="file" id="shop-logo-input" accept="image/*" class="shop-logo-input" aria-label="Upload shop front image">
+                                    <div class="shop-logo-placeholder" id="shop-logo-placeholder">
+                                        <i class="fas fa-image"></i>
+                                        <span>Upload Shop Front Image</span>
+                                    </div>
+                                    <img id="shop-logo-preview" class="shop-logo-preview" src="" alt="Shop front image preview" style="display: none;">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Shop Name -->
+                        <div class="form-group">
+                            <label for="shop-name" class="form-label">Shop Name</label>
+                            <input type="text" id="shop-name" class="form-input" placeholder="e.g., Speedy Moto Fix" value="Speedy Moto Fix">
+                        </div>
+
+                        <!-- Address -->
+                        <div class="form-group">
+                            <label for="shop-address" class="form-label">Address</label>
+                            <textarea id="shop-address" class="form-textarea" rows="3" placeholder="Enter shop physical location">123 Main Street, City, State 12345</textarea>
+                        </div>
+
+                        <!-- Contact Line -->
+                        <div class="form-group">
+                            <label for="shop-contact" class="form-label">Contact Line</label>
+                            <input type="tel" id="shop-contact" class="form-input" placeholder="Phone number for business" value="+1 (555) 123-4567">
+                        </div>
+
+                        <!-- TIN/Tax ID -->
+                        <div class="form-group">
+                            <label for="shop-tin" class="form-label">TIN/Tax ID <span class="optional-label">(Optional)</span></label>
+                            <input type="text" id="shop-tin" class="form-input" placeholder="Enter TIN or Tax ID">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Save Changes Button -->
+            <div class="profile-actions">
+                <button type="button" class="btn-save-changes" id="save-changes-btn">
+                    <i class="fas fa-save"></i>
+                    <span>Save Changes</span>
+                </button>
+            </div>
+        </main>
+    </div>
+
+    <!-- Change Password Modal -->
+    <div class="modal-overlay" id="password-modal-overlay">
+        <div class="modal-content password-modal">
+            <div class="modal-header">
+                <h3>Change Password</h3>
+                <button class="modal-close" id="password-modal-close" aria-label="Close modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="current-password" class="form-label">Current Password</label>
+                    <input type="password" id="current-password" class="form-input" placeholder="Enter current password">
+                </div>
+                <div class="form-group">
+                    <label for="new-password" class="form-label">New Password</label>
+                    <input type="password" id="new-password" class="form-input" placeholder="Enter new password">
+                </div>
+                <div class="form-group">
+                    <label for="confirm-password" class="form-label">Confirm New Password</label>
+                    <input type="password" id="confirm-password" class="form-input" placeholder="Confirm new password">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" id="cancel-password-btn">Cancel</button>
+                <button type="button" class="btn-primary" id="update-password-btn">Update Password</button>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
+

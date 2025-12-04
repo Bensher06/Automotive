@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parts Tracker</title>
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Local files -->
+    <link rel="stylesheet" href="css/ProductsPage.css">
+    <script src="js/AvatarManager.js" defer></script>
+    <script src="js/ShopSettingsManager.js" defer></script>
+    <script src="js/closeButtons.js" defer></script>
+    <script src="js/ProductsPage.js" defer></script>
+</head>
+<body>
+
+    <!-- ======================= -->
+    <!-- ===== SIDEBAR NAV ===== -->
+    <!-- ======================= -->
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <a href="AdminDashboard.html" class="sidebar-logo">Admin</a>
+            <button class="sidebar-toggle" id="sidebar-toggle">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+        </div>
+        
+        <ul class="sidebar-menu">
+            <li><a href="AdminDashboard.html"><i class="fa-solid fa-grip"></i><span>Overview</span></a></li>
+            <li><a href="ProfitPage.html"><i class="fa-solid fa-chart-pie"></i><span>Profit</span></a></li>
+            <li><a href="ProductsPage.html" class="active"><i class="fa-solid fa-box"></i><span>Products</span></a></li>
+            <li><a href="BookingManagerPage.html"><i class="fa-solid fa-calendar-alt"></i><span>Bookings</span></a></li>
+            <li><a href="SettingsPage.html"><i class="fa-solid fa-sliders-h"></i><span>Settings</span></a></li>
+        </ul>
+        
+        <div class="sidebar-footer">
+            <a href="#"><i class="fa-solid fa-arrow-right-from-bracket"></i><span>Logout</span></a>
+        </div>
+    </nav>
+
+    <!-- ======================= -->
+    <!-- ===== MAIN CONTENT ==== -->
+    <!-- ======================= -->
+    <main class="main-content">
+
+        <!-- ===== Main Header ===== -->
+        <header class="main-header">
+            <h1 class="header-title">Parts Tracker</h1>
+            <div class="header-toolbar">
+                <button class="notification-btn">
+                    <i class="fa-solid fa-bell"></i>
+                    <span class="notification-badge"></span>
+                </button>
+                <a href="ProfilePage.html">
+                    <img src="https://i.pravatar.cc/100?img=11" alt="Profile" class="profile-avatar">
+                </a>
+            </div>
+        </header>
+
+        <!-- ===== Main Body / Widgets ===== -->
+        <div class="main-body">
+            
+            <!-- Search & Filters -->
+            <div class="search-and-filters">
+                <div class="search-bar">
+                    <i class="fa-solid fa-search"></i>
+                    <input type="text" placeholder="Search parts...">
+                </div>
+                <div class="filter-tabs">
+                    <button class="filter-btn active">All Parts</button>
+                    <button class="filter-btn">Engine</button>
+                    <button class="filter-btn">Brakes</button>
+                    <button class="filter-btn">Tires</button>
+                </div>
+            </div>
+
+            <!-- Stats Grid -->
+            <section class="stats-grid">
+                <article class="widget-card stat-card" data-inventory-type="in-stock">
+                    <p>In Stock</p>
+                    <div class="stat-main">
+                        <h2>2,847</h2>
+                        <div class="stat-icon-wrapper icon-in-stock">
+                            <i class="fa-solid fa-check"></i>
+                        </div>
+                    </div>
+                </article>
+                <article class="widget-card stat-card" data-inventory-type="low-stock">
+                    <p>Low Stock</p>
+                    <div class="stat-main">
+                        <h2>156</h2>
+                        <div class="stat-icon-wrapper icon-low-stock">
+                            <i class="fa-solid fa-exclamation"></i>
+                        </div>
+                    </div>
+                </article>
+                <article class="widget-card stat-card" data-inventory-type="out-of-stock">
+                    <p>Out of Stock</p>
+                    <div class="stat-main">
+                        <h2>43</h2>
+                        <div class="stat-icon-wrapper icon-out-of-stock">
+                            <i class="fa-solid fa-times"></i>
+                        </div>
+                    </div>
+                </article>
+                <article class="widget-card stat-card" data-inventory-type="total">
+                    <p>Total Parts</p>
+                    <div class="stat-main">
+                        <h2>3,046</h2>
+                        <div class="stat-icon-wrapper icon-total-parts">
+                            <i class="fa-solid fa-boxes-stacked"></i>
+                        </div>
+                    </div>
+                </article>
+            </section>
+
+            <!-- Critical Stock Alert -->
+            <section class="critical-alert">
+                <i class="fa-solid fa-exclamation-triangle"></i>
+                <div class="alert-text">
+                    <h3>Critical Stock Alert</h3>
+                    <p>12 parts need immediate restocking</p>
+                </div>
+            </section>
+
+            <!-- Parts Inventory List -->
+            <section class="parts-inventory">
+                <div class="list-header">
+                    <h3>Parts Inventory</h3>
+                    <a href="#" class="view-all-link">View All</a>
+                </div>
+                <div class="list-body">
+                    <!-- Item 1 -->
+                    <article class="widget-card part-item" data-part-name="Engine Oil Filter">
+                        <div class="part-icon">
+                            <i class="fa-solid fa-oil-can"></i>
+                        </div>
+                        <div class="part-info">
+                            <h4>Engine Oil Filter</h4>
+                            <p>SKU: EOL-2024-X1</p>
+                        </div>
+                        <div class="part-status">
+                            <span class="stock-tag stock-in">In Stock</span>
+                            <p>245 units</p>
+                        </div>
+                    </article>
+                    <!-- Item 2 -->
+                    <article class="widget-card part-item" data-part-name="Brake Pads Front">
+                        <div class="part-icon">
+                            <i class="fa-solid fa-circle"></i>
+                        </div>
+                        <div class="part-info">
+                            <h4>Brake Pads Front</h4>
+                            <p>SKU: BPF-2024-R2</p>
+                        </div>
+                        <div class="part-status">
+                            <span class="stock-tag stock-low">Low Stock</span>
+                            <p>8 units</p>
+                        </div>
+                    </article>
+                    <!-- Item 3 -->
+                    <article class="widget-card part-item" data-part-name="Spark Plug Set">
+                        <div class="part-icon">
+                            <i class="fa-solid fa-bolt"></i>
+                        </div>
+                        <div class="part-info">
+                            <h4>Spark Plug Set</h4>
+                            <p>SKU: SPS-2024-M4</p>
+                        </div>
+                        <div class="part-status">
+                            <span class="stock-tag stock-out">Out of Stock</span>
+                            <p>0 units</p>
+                        </div>
+                    </article>
+                    <!-- Item 4 -->
+                    <article class="widget-card part-item" data-part-name="Chain & Sprocket Kit">
+                        <div class="part-icon">
+                            <i class="fa-solid fa-link"></i>
+                        </div>
+                        <div class="part-info">
+                            <h4>Chain & Sprocket Kit</h4>
+                            <p>SKU: CSK-2024-H6</p>
+                        </div>
+                        <div class="part-status">
+                            <span class="stock-tag stock-in">In Stock</span>
+                            <p>67 units</p>
+                        </div>
+                    </article>
+                    <!-- Item 5 -->
+                    <article class="widget-card part-item" data-part-name="Battery 12V">
+                        <div class="part-icon">
+                            <i class="fa-solid fa-car-battery"></i>
+                        </div>
+                        <div class="part-info">
+                            <h4>Battery 12V</h4>
+                            <p>SKU: BAT-2024-L8</p>
+                        </div>
+                        <div class="part-status">
+                            <span class="stock-tag stock-low">Low Stock</span>
+                            <p>12 units</p>
+                        </div>
+                    </article>
+                </div>
+            </section>
+
+        </div> <!-- /main-body -->
+    </main>
+
+    <!-- Parts Inventory Modal (View All) -->
+    <div class="parts-modal-overlay" id="parts-modal-overlay">
+        <div class="parts-modal">
+            <div class="parts-modal-header">
+                <h2>All Parts Inventory</h2>
+                <button class="parts-modal-close" id="parts-modal-close" aria-label="Close modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="parts-modal-body" id="parts-modal-body">
+                <!-- Parts will be populated here by JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Inventory Drill-Down Modal -->
+    <div class="inventory-modal-overlay" id="inventory-modal-overlay">
+        <div class="inventory-modal">
+            <div class="inventory-modal-header" id="inventory-modal-header">
+                <h2 id="inventory-modal-title">Inventory Details</h2>
+                <button class="inventory-modal-close" id="inventory-modal-close" aria-label="Close modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="inventory-modal-body" id="inventory-modal-body">
+                <!-- Parts will be populated here by JavaScript -->
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>

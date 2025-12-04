@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profit Dashboard</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <link rel="stylesheet" href="css/ProfitPage.css">
+    <script src="js/AvatarManager.js" defer></script>
+    <script src="js/ShopSettingsManager.js" defer></script>
+    <script src="js/closeButtons.js" defer></script>
+    <script src="js/ProfitPage.js" defer></script>
+</head>
+<body>
+
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <a href="AdminDashboard.html" class="sidebar-logo">Admin</a>
+            <button class="sidebar-toggle" id="sidebar-toggle">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+        </div>
+        
+        <ul class="sidebar-menu">
+            <li><a href="AdminDashboard.html"><i class="fa-solid fa-grip"></i><span>Overview</span></a></li>
+            <li><a href="ProfitPage.html" class="active"><i class="fa-solid fa-chart-pie"></i><span>Profit</span></a></li>
+            <li><a href="ProductsPage.html"><i class="fa-solid fa-box"></i><span>Products</span></a></li>
+            <li><a href="BookingManagerPage.html"><i class="fa-solid fa-calendar-alt"></i><span>Bookings</span></a></li>
+            <li><a href="SettingsPage.html"><i class="fa-solid fa-sliders-h"></i><span>Settings</span></a></li>
+        </ul>
+        
+        <div class="sidebar-footer">
+            <a href="#"><i class="fa-solid fa-arrow-right-from-bracket"></i><span>Logout</span></a>
+        </div>
+    </nav>
+
+    <main class="main-content">
+
+        <header class="main-header">
+            <a href="AdminDashboard.html" class="header-back-btn">
+                <i class="fa-solid fa-arrow-left"></i>
+            </a>
+            <h1>Profit</h1>
+            <div class="header-toolbar">
+                <button class="notification-btn">
+                    <i class="fa-solid fa-bell"></i>
+                </button>
+                <a href="ProfilePage.html">
+                    <img src="https://i.pravatar.cc/100?img=12" alt="Profile" class="profile-avatar">
+                </a>
+            </div>
+        </header>
+
+        <div class="main-body">
+
+            <div class="widget-grid">
+
+                <article class="widget-card total-profit-card">
+                    <div class="card-header">
+                        <h3>Total Profit</h3>
+                        <i class="fa-solid fa-chart-line"></i>
+                    </div>
+                    <h2 class="profit-value">&#8369;47,890</h2>
+                    <p class="stat-change positive">
+                        <i class="fa-solid fa-arrow-up"></i>
+                        +12.5% <span>vs last month</span>
+                    </p>
+                </article>
+
+                <article class="widget-card stat-card">
+                    <div class="stat-header">
+                        <i class="stat-icon revenue-icon fa-solid fa-dollar-sign"></i>
+                        <span class="stat-change positive">+8.2%</span>
+                    </div>
+                    <p class="stat-title">Revenue</p>
+                    <h3 class="stat-value">&#8369;24,680</h3>
+                </article>
+
+                <article class="widget-card stat-card">
+                    <div class="stat-header">
+                        <i class="stat-icon expenses-icon fa-solid fa-file-invoice-dollar"></i>
+                        <span class="stat-change negative">-2.1%</span>
+                    </div>
+                    <p class="stat-title">Expenses</p>
+                    <h3 class="stat-value">&#8369;8,450</h3>
+                </article>
+
+                <article class="widget-card stat-card">
+                    <div class="stat-header">
+                        <i class="stat-icon margin-icon fa-solid fa-percent"></i>
+                        <span class="stat-change positive">+5.3%</span>
+                    </div>
+                    <p class="stat-title">Margin</p>
+                    <h3 class="stat-value">68.5%</h3>
+                </article>
+
+                <article class="widget-card stat-card">
+                    <div class="stat-header">
+                        <i class="stat-icon goal-icon fa-solid fa-bullseye"></i>
+                        <span class="stat-change positive">+15.7%</span>
+                    </div>
+                    <p class="stat-title">Goal</p>
+                    <h3 class="stat-value">94.2%</h3>
+                </article>
+
+                <article class="widget-card chart-card">
+                    <div class="card-header">
+                        <h3>Profit Trend</h3>
+                        <select name="period" class="period-select">
+                            <option value="7">7 days</option>
+                            <option value="30">30 days</option>
+                        </select>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="profitTrendChart"></canvas>
+                    </div>
+                </article>
+
+                <article class="widget-card chart-card">
+                    <h3>Profit Margin</h3>
+                    <div class="gauge-chart-container">
+                        <canvas id="profitMarginChart"></canvas>
+                    </div>
+                    <p class="gauge-chart-footer">Current Margin</p>
+                </article>
+
+            </div> 
+        </div> 
+
+    </main>
+
+</body>
+</html>

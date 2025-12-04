@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+
+    <link rel="stylesheet" href="css/StoreOwnerHomepage.css">
+    <script src="js/AvatarManager.js" defer></script>
+    <script src="js/ShopSettingsManager.js" defer></script>
+    <script src="js/closeButtons.js" defer></script>
+    <style>
+    /* Creative back-link styles for SettingsPage */
+    .back-link-creative {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.55rem 0.9rem;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #7C4DFF 0%, #4A90FF 100%);
+        color: #fff;
+        text-decoration: none;
+        font-weight: 600;
+        box-shadow: 0 6px 18px rgba(74,128,255,0.16), inset 0 -6px 18px rgba(255,255,255,0.02);
+        transition: transform 160ms ease, box-shadow 160ms ease;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .back-link-creative .icon {
+        width: 28px;
+        height: 28px;
+        display: inline-grid;
+        place-items: center;
+        background: rgba(255,255,255,0.12);
+        border-radius: 50%;
+        transition: transform 220ms cubic-bezier(.2,.9,.2,1), background 160ms;
+    }
+
+    .back-link-creative:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 12px 26px rgba(74,128,255,0.18), inset 0 -6px 18px rgba(255,255,255,0.03);
+    }
+
+    .back-link-creative:active { transform: translateY(-1px) scale(.997); }
+
+    .back-link-creative .label {
+        white-space: nowrap;
+        letter-spacing: 0.2px;
+    }
+
+    /* subtle animated underline on hover */
+    .back-link-creative::after{
+        content: '';
+        display:block;
+        height:3px;
+        width:0;
+        background: rgba(255,255,255,0.18);
+        border-radius:2px;
+        margin-top:6px;
+        transition: width 220ms ease;
+    }
+    .back-link-creative:hover::after{ width: 100%; }
+
+    /* small responsive tweak */
+    @media (max-width:520px){
+        .back-link-creative{ padding:0.45rem 0.7rem; gap:0.5rem }
+        .back-link-creative .label{ font-size:0.95rem }
+    }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard-container settings-page">
+            <header class="dashboard-header">
+            <a href="AdminDashboard.html" class="back-link-creative" aria-label="Back to dashboard">
+                <span class="icon" aria-hidden="true">
+                    <!-- Left chevron + rounded stroke SVG -->
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M15 18L9 12L15 6" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </span>
+                <span class="label">Back</span>
+            </a>
+            <h1>Settings</h1>
+            <div class="header-icons">
+                <!-- Close button removed for standalone Settings page -->
+            </div>
+        </header>
+
+        <main>
+            <section class="settings-section" style="display: block; padding: 24px; max-width:900px; margin:24px auto; background:#fff; border-radius:8px;">
+                <div class="settings-header" style="margin-bottom:8px;">
+                    <h2>Settings</h2>
+                </div>
+                <div class="settings-content">
+                    <div class="settings-group">
+                        <h3>Profit Margin</h3>
+                        <div class="form-group">
+                            <label for="profit-margin-input">Profit Margin Percentage (%)</label>
+                            <div class="input-wrapper">
+                                <input type="number" id="profit-margin-input" class="stat-input" value="35" min="0" max="100" step="0.1" placeholder="35">
+                                <span class="input-suffix">%</span>
+                            </div>
+                            <small>Percentage used to calculate profit from sales</small>
+                        </div>
+                    </div>
+
+                    <div class="settings-group">
+                        <h3>Data Management</h3>
+                        <div class="settings-buttons">
+                            <button type="button" class="btn-secondary" id="export-data-btn">
+                                <i class="fas fa-download"></i> Export Data
+                            </button>
+                            <button type="button" class="btn-secondary" id="import-data-btn">
+                                <i class="fas fa-upload"></i> Import Data
+                            </button>
+                            <input type="file" id="import-data-file" accept=".json" style="display: none;">
+                            <button type="button" class="btn-secondary" id="reset-data-btn">
+                                <i class="fas fa-redo"></i> Reset to Default
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="settings-group">
+                        <h3>Chart Settings</h3>
+                        <div class="form-group">
+                            <label for="default-sales-period">Default Sales Period</label>
+                            <select id="default-sales-period" class="stat-input">
+                                <option value="7">Last 7 days</option>
+                                <option value="30">Last 30 days</option>
+                                <option value="90">Last 90 days</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="settings-group">
+                        <h3>Auto-calculate</h3>
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="auto-calculate-profit" checked>
+                                <span>Automatically calculate profit from sales</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="auto-update-sales" checked>
+                                <span>Update sales from transactions</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        // Real wiring: store/load dashboardData from localStorage
+        const STORAGE_KEY = 'dashboardData';
+
+        function getDefaultData() {
+            return {
+                settings: {
+                    profitMargin: 35,
+                    autoCalculateProfit: true,
+                    autoUpdateSales: true,
+                    defaultSalesPeriod: 7
+                }
+            };
+        }
+
+        function loadStoredData() {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (!raw) return getDefaultData();
+            try {
+                const parsed = JSON.parse(raw);
+                // Ensure settings key exists
+                if (!parsed.settings) parsed.settings = getDefaultData().settings;
+                return parsed;
+            } catch (err) {
+                console.warn('Failed to parse stored dashboard data:', err);
+                return getDefaultData();
+            }
+        }
+
+        function saveStoredData(data) {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+            } catch (err) {
+                alert('Failed to save settings: ' + err.message);
+            }
+        }
+
+        function populateInputs() {
+            const data = loadStoredData();
+            document.getElementById('profit-margin-input').value = data.settings.profitMargin ?? 35;
+            document.getElementById('auto-calculate-profit').checked = !!data.settings.autoCalculateProfit;
+            document.getElementById('auto-update-sales').checked = !!data.settings.autoUpdateSales;
+            document.getElementById('default-sales-period').value = data.settings.defaultSalesPeriod ?? 7;
+        }
+
+        function updateSettingFromUI() {
+            const data = loadStoredData();
+            data.settings.profitMargin = parseFloat(document.getElementById('profit-margin-input').value) || 0;
+            data.settings.autoCalculateProfit = !!document.getElementById('auto-calculate-profit').checked;
+            data.settings.autoUpdateSales = !!document.getElementById('auto-update-sales').checked;
+            data.settings.defaultSalesPeriod = parseInt(document.getElementById('default-sales-period').value) || 7;
+            saveStoredData(data);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            populateInputs();
+
+            // Auto-save when inputs change
+            document.getElementById('profit-margin-input')?.addEventListener('input', updateSettingFromUI);
+            document.getElementById('auto-calculate-profit')?.addEventListener('change', updateSettingFromUI);
+            document.getElementById('auto-update-sales')?.addEventListener('change', updateSettingFromUI);
+            document.getElementById('default-sales-period')?.addEventListener('change', updateSettingFromUI);
+
+            // Export current stored data
+            document.getElementById('export-data-btn')?.addEventListener('click', () => {
+                const data = loadStoredData();
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = 'dashboard-data.json'; a.click(); URL.revokeObjectURL(url);
+            });
+
+            // Import data from file and persist
+            document.getElementById('import-data-btn')?.addEventListener('click', () => {
+                document.getElementById('import-data-file')?.click();
+            });
+
+            document.getElementById('import-data-file')?.addEventListener('change', (e) => {
+                const file = e.target.files && e.target.files[0];
+                if (!file) return alert('No file selected');
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    try {
+                        const parsed = JSON.parse(ev.target.result);
+                        // Accept either full dashboardData or partial settings object
+                        if (parsed && (parsed.settings || parsed.transactions || parsed.products)) {
+                            saveStoredData(parsed);
+                        } else if (parsed && typeof parsed === 'object') {
+                            // If it's just settings, wrap it
+                            saveStoredData({ settings: parsed });
+                        } else {
+                            throw new Error('Unexpected JSON structure');
+                        }
+                        populateInputs();
+                        alert('Data imported successfully.');
+                    } catch (error) {
+                        alert('Error importing data: ' + (error.message || error));
+                    }
+                };
+                reader.readAsText(file);
+            });
+
+            // Reset data to defaults
+            document.getElementById('reset-data-btn')?.addEventListener('click', () => {
+                // Load current data to preserve other fields
+                const currentData = loadStoredData();
+                
+                // Reset Sales to 0
+                if (!currentData.sales) currentData.sales = {};
+                currentData.sales.current = 0;
+                currentData.sales.previous = 0;
+                
+                // Reset Profit to 0
+                if (!currentData.profit) currentData.profit = {};
+                currentData.profit.current = 0;
+                currentData.profit.previous = 0;
+                
+                // Clear all transactions
+                currentData.transactions = [];
+                
+                // Reset sales history data to zeros
+                if (currentData.salesHistory) {
+                    Object.keys(currentData.salesHistory).forEach(period => {
+                        if (currentData.salesHistory[period] && currentData.salesHistory[period].data) {
+                            currentData.salesHistory[period].data = currentData.salesHistory[period].data.map(() => 0);
+                        }
+                    });
+                }
+                
+                // Reset settings to defaults
+                currentData.settings = getDefaultData().settings;
+                
+                // Save updated data
+                saveStoredData(currentData);
+                
+                // Show success modal
+                showSuccessModal();
+            });
+
+            // Success modal functions
+            function showSuccessModal() {
+                const modal = document.getElementById('success-modal-overlay');
+                if (modal) {
+                    modal.classList.add('active');
+                }
+            }
+
+            function hideSuccessModal() {
+                const modal = document.getElementById('success-modal-overlay');
+                if (modal) {
+                    modal.classList.remove('active');
+                }
+            }
+
+            // Setup success modal OK button
+            const successModalOkBtn = document.getElementById('success-modal-ok-btn');
+            if (successModalOkBtn) {
+                successModalOkBtn.addEventListener('click', () => {
+                    hideSuccessModal();
+                    window.location.reload();
+                });
+            }
+
+            // Close success modal on backdrop click
+            const successModalOverlay = document.getElementById('success-modal-overlay');
+            if (successModalOverlay) {
+                successModalOverlay.addEventListener('click', (e) => {
+                    if (e.target === successModalOverlay) {
+                        hideSuccessModal();
+                        window.location.reload();
+                    }
+                });
+            }
+        });
+    </script>
+
+    <!-- Success Modal -->
+    <div id="success-modal-overlay" class="success-modal-overlay">
+        <div class="success-modal-card">
+            <div class="success-modal-icon">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <h3 class="success-modal-title">Success</h3>
+            <p class="success-modal-message">Data has been reset successfully. Sales, Profit, and Transactions are now set to zero.</p>
+            <button class="success-modal-button" id="success-modal-ok-btn">
+                Okay
+            </button>
+        </div>
+    </div>
+
+</body>
+</html>

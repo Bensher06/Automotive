@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Booking Manager</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+
+    <link rel="stylesheet" href="css/StoreOwnerHomepage.css">
+    <link rel="stylesheet" href="css/BookingManagerPage.css">
+    <script src="js/AvatarManager.js" defer></script>
+    <script src="js/ShopSettingsManager.js" defer></script>
+    <script src="js/closeButtons.js" defer></script>
+    <script src="js/BookingManagerPage.js" defer></script>
+</head>
+<body>
+
+    <!-- Sidebar Navigation -->
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <a href="AdminDashboard.html" class="sidebar-logo">Admin</a>
+            <button class="sidebar-toggle sidebar-toggle-btn" id="sidebar-toggle" type="button" aria-label="Toggle sidebar">
+                <i class="fas fa-bars"></i>
+            </button>
+        </div>
+        
+        <ul class="sidebar-menu">
+            <li><a href="AdminDashboard.html"><i class="fas fa-grip"></i><span>Overview</span></a></li>
+            <li><a href="ProfitPage.html"><i class="fas fa-chart-pie"></i><span>Profit</span></a></li>
+            <li><a href="ProductsPage.html"><i class="fas fa-box"></i><span>Products</span></a></li>
+            <li><a href="BookingManagerPage.html" class="active"><i class="fas fa-calendar-alt"></i><span>Bookings</span></a></li>
+            <li><a href="SettingsPage.html"><i class="fas fa-sliders-h"></i><span>Settings</span></a></li>
+        </ul>
+        
+        <div class="sidebar-footer">
+            <a href="#" onclick="event.preventDefault(); alert('Logout functionality coming soon!'); return false;">
+                <i class="fas fa-arrow-right-from-bracket"></i><span>Logout</span>
+            </a>
+        </div>
+    </nav>
+
+    <!-- Overlay for mobile -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <button class="menu-toggle" type="button" aria-label="Toggle navigation">
+                <i class="fas fa-bars" aria-hidden="true"></i>
+            </button>
+            <h1>Booking Manager</h1>
+            <div class="header-icons">
+                <a href="SettingsPage.html" class="settings-btn" aria-label="Open Settings" target="_blank" rel="noopener noreferrer" title="Open settings">
+                    <i class="fas fa-cog" aria-hidden="true"></i>
+                </a>
+                <button class="notification-bell" type="button" aria-label="View notifications">
+                    <i class="fas fa-bell" aria-hidden="true"></i>
+                    <span class="notification-badge" aria-hidden="true">2</span>
+                </button>
+                <a href="ProfilePage.html">
+                    <img src="https://i.pravatar.cc/100?img=12" alt="Store owner avatar" class="profile-avatar" loading="lazy">
+                </a>
+            </div>
+        </header>
+
+        <main>
+            <div class="booking-manager-container">
+                <!-- Tab System -->
+                <div class="booking-tabs">
+                    <button class="booking-tab active" data-tab="incoming">
+                        <i class="fas fa-bell"></i>
+                        <span>Incoming Requests</span>
+                        <span class="tab-badge" id="incoming-badge">0</span>
+                    </button>
+                    <button class="booking-tab" data-tab="upcoming">
+                        <i class="fas fa-calendar-check"></i>
+                        <span>Upcoming Schedule</span>
+                    </button>
+                    <button class="booking-tab" data-tab="history">
+                        <i class="fas fa-history"></i>
+                        <span>History</span>
+                    </button>
+                </div>
+
+                <!-- Tab Content -->
+                <div class="booking-content">
+                    <!-- Incoming Requests Tab -->
+                    <div class="tab-panel active" id="incoming-panel">
+                        <div class="bookings-list" id="incoming-list">
+                            <!-- Bookings will be dynamically generated -->
+                        </div>
+                    </div>
+
+                    <!-- Upcoming Schedule Tab -->
+                    <div class="tab-panel" id="upcoming-panel">
+                        <div class="bookings-list" id="upcoming-list">
+                            <!-- Bookings will be dynamically generated -->
+                        </div>
+                    </div>
+
+                    <!-- History Tab -->
+                    <div class="tab-panel" id="history-panel">
+                        <div class="bookings-list" id="history-list">
+                            <!-- Bookings will be dynamically generated -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/StoreOwnerHomepage.js" defer></script>
+
+</body>
+</html>
+

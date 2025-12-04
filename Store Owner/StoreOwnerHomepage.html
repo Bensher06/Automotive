@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Store Homepage</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <link rel="stylesheet" href="css/StoreOwnerHomepage.css">
+</head>
+<body>
+
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <button class="menu-toggle" type="button" aria-label="Toggle navigation">
+                <i class="fas fa-bars" aria-hidden="true"></i>
+            </button>
+            <h1>Admin Dashboard</h1>
+            <div class="header-icons">
+                <a href="SettingsPage.html" class="settings-btn" aria-label="Open Settings" target="_blank" rel="noopener noreferrer" title="Open settings (Alt+click opens inline)">
+                    <i class="fas fa-cog" aria-hidden="true"></i>
+                </a>
+                <button class="notification-bell" type="button" aria-label="View notifications">
+                    <i class="fas fa-bell" aria-hidden="true"></i>
+                    <span class="notification-badge" aria-hidden="true">2</span>
+                </button>
+                <img src="https://i.pravatar.cc/100?img=12" alt="Store owner avatar" class="profile-avatar" loading="lazy">
+            </div>
+        </header>
+
+        <main>
+            <section class="stats-grid">
+                
+                <div class="stat-card" data-type="sales">
+                    <div class="stat-card-header">
+                        <i class="fas fa-chart-line"></i>
+                        <span class="stat-badge" id="sales-badge">+12%</span>
+                    </div>
+                    <div class="stat-card-body">
+                        <div class="stat-input-group">
+                            <label for="sales-current-input">Current Sales</label>
+                            <div class="input-wrapper">
+                                <span class="currency-symbol">₱</span>
+                                <input type="number" id="sales-current-input" class="stat-input" value="24500" min="0" step="0.01" placeholder="0.00">
+                            </div>
+                        </div>
+                        <div class="stat-input-group">
+                            <label for="sales-previous-input">Previous Period</label>
+                            <div class="input-wrapper">
+                                <span class="currency-symbol">₱</span>
+                                <input type="number" id="sales-previous-input" class="stat-input" value="21875" min="0" step="0.01" placeholder="0.00">
+                            </div>
+                        </div>
+                        <p>Sales</p>
+                    </div>
+                </div>
+
+                <div class="stat-card" data-type="profit">
+                    <div class="stat-card-header">
+                        <i class="fas fa-dollar-sign"></i>
+                        <span class="stat-badge" id="profit-badge">+8%</span>
+                    </div>
+                    <div class="stat-card-body">
+                        <div class="stat-input-group">
+                            <label for="profit-current-input">Current Profit</label>
+                            <div class="input-wrapper">
+                                <span class="currency-symbol">₱</span>
+                                <input type="number" id="profit-current-input" class="stat-input" value="8750" min="0" step="0.01" placeholder="0.00">
+                            </div>
+                        </div>
+                        <div class="stat-input-group">
+                            <label for="profit-previous-input">Previous Period</label>
+                            <div class="input-wrapper">
+                                <span class="currency-symbol">₱</span>
+                                <input type="number" id="profit-previous-input" class="stat-input" value="8101" min="0" step="0.01" placeholder="0.00">
+                            </div>
+                        </div>
+                        <p>Profit</p>
+                    </div>
+                </div>
+
+                <div class="stat-card" data-type="mechanics">
+                    <div class="stat-card-header">
+                        <i class="fas fa-tools"></i>
+                        <span class="stat-badge" id="mechanics-badge">Available</span>
+                    </div>
+                    <div class="stat-card-body stat-card-mechanics">
+                        <div class="stat-input-group">
+                            <label for="mechanics-available-input">Available</label>
+                            <input type="number" id="mechanics-available-input" class="stat-input" value="8" min="0" placeholder="0">
+                        </div>
+                        <div class="stat-input-group">
+                            <label for="mechanics-total-input">Total</label>
+                            <input type="number" id="mechanics-total-input" class="stat-input" value="12" min="1" placeholder="0">
+                        </div>
+                        <p>Mechanics</p>
+                    </div>
+                </div>
+
+                <div class="stat-card" data-type="products">
+                    <div class="stat-card-header">
+                        <i class="fas fa-box"></i>
+                        <span class="stat-badge" id="products-badge">156</span>
+                    </div>
+                    <div class="stat-card-body">
+                        <div class="stat-input-group">
+                            <label for="products-total-input">Total Products</label>
+                            <input type="number" id="products-total-input" class="stat-input" value="156" min="0" placeholder="0">
+                        </div>
+                        <button type="button" class="edit-categories-btn" data-action="edit-products">
+                            <i class="fas fa-cog"></i> Edit Categories
+                        </button>
+                        <p>Products</p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="quick-actions">
+                <h2>Quick Actions</h2>
+                <div class="quick-actions-grid">
+                    <button class="action-button add-sale" type="button" data-action="add-transaction">
+                        <i class="fas fa-plus"></i>
+                        <span>Add Sale</span>
+                    </button>
+                    <button class="action-button add-mechanic" type="button" data-action="edit-mechanics">
+                        <i class="fas fa-user-plus"></i>
+                        <span>Add Mechanic</span>
+                    </button>
+                    <button class="action-button add-product" type="button" data-action="edit-products">
+                        <i class="fas fa-shopping-cart"></i>
+                        <span>Add Product</span>
+                    </button>
+                    <button class="action-button view-reports" type="button" data-action="view-reports">
+                        <i class="fas fa-chart-pie"></i>
+                        <span>View Reports</span>
+                    </button>
+                </div>
+            </section>
+
+            <div class="data-wrapper">
+                <section class="sales-overview">
+                    <div class="sales-header">
+                        <h2>Sales Overview</h2>
+                        <select name="sales-period" id="sales-period">
+                            <option value="7">Last 7 days</option>
+                            <option value="30">Last 30 days</option>
+                            <option value="90">Last 90 days</option>
+                        </select>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="salesChart"></canvas>
+                    </div>
+                </section>
+
+                <section class="transactions">
+                    <div class="transactions-header">
+                        <h2>Recent Transactions</h2>
+                        <button class="add-transaction-btn" type="button" data-action="add-transaction" aria-label="Add Transaction">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                    </div>
+                    <div class="transactions-list" id="transactions-list">
+                        <!-- Transactions will be dynamically generated -->
+                    </div>
+                </section>
+            </div>
+
+            <section class="products-section">
+                <div class="products-header">
+                    <h2>Products Distribution</h2>
+                </div>
+                <div class="products-chart-container">
+                    <canvas id="productsChart"></canvas>
+                </div>
+            </section>
+
+            <!-- Inline settings removed; use SettingsPage.html instead -->
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="modal-overlay" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Edit</h2>
+                <button class="modal-close" type="button" aria-label="Close modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body" id="modal-body">
+                <!-- Modal content will be dynamically generated -->
+            </div>
+        </div>
+    </div>
+
+    <script src="js/closeButtons.js" defer></script>
+    <script src="js/StoreOwnerHomepage.js"></script>
+
+</body>
+</html>
