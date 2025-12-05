@@ -27,6 +27,7 @@ import AdminDashboard from './pages/AdminDashboard'
 import StoreDashboard from './pages/StoreDashboard'
 import ShopVerification from './pages/ShopVerification'
 import WaitingApproval from './pages/WaitingApproval'
+import CustomerProfile from './pages/CustomerProfile'
 import { supabase } from './lib/supabase'
 import { useState, useEffect } from 'react'
 
@@ -341,6 +342,16 @@ function App() {
             }
           />
 
+          <Route
+            path="/profile"
+            element={
+              <Layout>
+                <ProtectedRoute>
+                  <CustomerProfile />
+                </ProtectedRoute>
+              </Layout>
+            }
+          />
           <Route
             path="/cart"
             element={

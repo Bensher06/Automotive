@@ -1,11 +1,10 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
-import { MapPin, Clock, Star, Wrench, CheckCircle, XCircle, Navigation } from 'lucide-react'
-// TODO: Fetch from API
-const mechanics = []
+import { MapPin, Clock, Star, Wrench, CheckCircle, XCircle, Navigation, X, Smartphone, Download } from 'lucide-react'
 import { haversineDistance, formatDistance, distanceCategories, filterByDistance } from '../utils/distanceUtils'
 import { useNotifications } from '../contexts/NotificationContext'
+import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 
@@ -43,10 +42,86 @@ const MechanicFinder = () => {
   const [mechanicCoords, setMechanicCoords] = useState({})
   const [mechanicsWithDistance, setMechanicsWithDistance] = useState([])
   const [selectedDistanceFilter, setSelectedDistanceFilter] = useState('All Distances')
+  const [mechanics, setMechanics] = useState([])
+  const [loadingMechanics, setLoadingMechanics] = useState(true)
+  const [showDownloadModal, setShowDownloadModal] = useState(false)
+  const [clickedMechanic, setClickedMechanic] = useState(null)
   const isEmergency = searchParams.get('emergency') === 'true'
 
-  // Get user's GPS location
+  // Fetch mechanics from Supabase
   useEffect(() => {
+    const fetchMechanics = async () => {
+      if (!isSupabaseConfigured) {
+        setLoadingMechanics(false)
+        return
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('mechanics')
+          .select('*')
+          .order('rating', { ascending: false })
+
+        if (error) {
+          console.error('Error fetching mechanics:', error)
+        } else {
+          // Transform data to match expected format
+          const transformedMechanics = (data || []).map(mech => ({
+            id: mech.id,
+            name: mech.name,
+            rating: mech.rating || 5.0,
+            reviews: mech.reviews_count || 0,
+            specialties: mech.specialties || [],
+            experience: mech.experience || 'N/A',
+            status: mech.status || 'available',
+            phone: mech.phone,
+            profileImage: mech.profile_image,
+            hourlyRate: mech.hourly_rate,
+            bio: mech.bio,
+            latitude: mech.latitude,
+            longitude: mech.longitude
+          }))
+          setMechanics(transformedMechanics)
+        }
+      } catch (err) {
+        console.error('Error:', err)
+      } finally {
+        setLoadingMechanics(false)
+      }
+    }
+
+    fetchMechanics()
+  }, [])
+
+  // Get user's GPS location and calculate distances
+  useEffect(() => {
+    if (loadingMechanics) return // Wait for mechanics to load
+
+    const calculateDistances = (centerLocation) => {
+      const coords = {}
+      const mechanicsWithDistances = mechanics.map(mechanic => {
+        // Use mechanic's actual coordinates if available, otherwise generate random ones
+        let mechLocation
+        if (mechanic.latitude && mechanic.longitude) {
+          mechLocation = [parseFloat(mechanic.latitude), parseFloat(mechanic.longitude)]
+        } else {
+          const offsetLat = (Math.random() - 0.5) * 0.05 // ~5km
+          const offsetLng = (Math.random() - 0.5) * 0.05
+          mechLocation = [centerLocation[0] + offsetLat, centerLocation[1] + offsetLng]
+        }
+        coords[mechanic.id] = mechLocation
+        const distanceKm = haversineDistance(centerLocation, mechLocation)
+        return { 
+          ...mechanic, 
+          location: { lat: mechLocation[0], lng: mechLocation[1] }, 
+          distance: formatDistance(distanceKm),
+          distanceKm: distanceKm
+        }
+      })
+      setMechanicCoords(coords)
+      setMechanicsWithDistance(mechanicsWithDistances)
+    }
+
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -55,49 +130,14 @@ const MechanicFinder = () => {
           setUserLocation(location)
           setMapCenter(location)
           setLocationError(null)
-          
-          // Generate mechanic coordinates once user location is known
-          const coords = {}
-          const mechanicsWithDistances = mechanics.map(mechanic => {
-            const offsetLat = (Math.random() - 0.5) * 0.05 // ~5km
-            const offsetLng = (Math.random() - 0.5) * 0.05
-            const mechLocation = [location[0] + offsetLat, location[1] + offsetLng]
-            coords[mechanic.id] = mechLocation
-            const distanceKm = haversineDistance(location, mechLocation)
-            return { 
-              ...mechanic, 
-              location: { lat: mechLocation[0], lng: mechLocation[1] }, 
-              distance: formatDistance(distanceKm),
-              distanceKm: distanceKm
-            }
-          })
-          setMechanicCoords(coords)
-          setMechanicsWithDistance(mechanicsWithDistances)
+          calculateDistances(location)
         },
         (error) => {
           console.error('Geolocation error:', error)
           setLocationError('Unable to get your location. Using default location.')
-          // Use Zamboanga City center as fallback
           setUserLocation(ZAMBOANGA_CENTER)
           setMapCenter(ZAMBOANGA_CENTER)
-          
-          // Generate mechanic coordinates for fallback location
-          const coords = {}
-          const mechanicsWithDistances = mechanics.map(mechanic => {
-            const offsetLat = (Math.random() - 0.5) * 0.05
-            const offsetLng = (Math.random() - 0.5) * 0.05
-            const mechLocation = [ZAMBOANGA_CENTER[0] + offsetLat, ZAMBOANGA_CENTER[1] + offsetLng]
-            coords[mechanic.id] = mechLocation
-            const distanceKm = haversineDistance(ZAMBOANGA_CENTER, mechLocation)
-            return { 
-              ...mechanic, 
-              location: { lat: mechLocation[0], lng: mechLocation[1] }, 
-              distance: formatDistance(distanceKm),
-              distanceKm: distanceKm
-            }
-          })
-          setMechanicCoords(coords)
-          setMechanicsWithDistance(mechanicsWithDistances)
+          calculateDistances(ZAMBOANGA_CENTER)
         },
         {
           enableHighAccuracy: true,
@@ -109,26 +149,9 @@ const MechanicFinder = () => {
       setLocationError('Geolocation is not supported by your browser.')
       setUserLocation(ZAMBOANGA_CENTER)
       setMapCenter(ZAMBOANGA_CENTER)
-      
-      // Generate mechanic coordinates for fallback location
-      const coords = {}
-      const mechanicsWithDistances = mechanics.map(mechanic => {
-        const offsetLat = (Math.random() - 0.5) * 0.05
-        const offsetLng = (Math.random() - 0.5) * 0.05
-        const mechLocation = [ZAMBOANGA_CENTER[0] + offsetLat, ZAMBOANGA_CENTER[1] + offsetLng]
-        coords[mechanic.id] = mechLocation
-        const distanceKm = haversineDistance(ZAMBOANGA_CENTER, mechLocation)
-        return { 
-          ...mechanic, 
-          location: { lat: mechLocation[0], lng: mechLocation[1] }, 
-          distance: formatDistance(distanceKm),
-          distanceKm: distanceKm
-        }
-      })
-      setMechanicCoords(coords)
-      setMechanicsWithDistance(mechanicsWithDistances)
+      calculateDistances(ZAMBOANGA_CENTER)
     }
-  }, [])
+  }, [mechanics, loadingMechanics])
 
   useEffect(() => {
     if (isEmergency) {
@@ -195,6 +218,12 @@ const MechanicFinder = () => {
         )
       }
     }
+  }
+
+  // Handle clicking on a mechanic card - show download app modal
+  const handleMechanicCardClick = (mechanic) => {
+    setClickedMechanic(mechanic)
+    setShowDownloadModal(true)
   }
 
   // Filter mechanics based on distance
@@ -470,7 +499,12 @@ const MechanicFinder = () => {
           <h2 className="text-xl font-semibold text-gray-900 mb-4">
             Available Mechanics ({filteredAvailableMechanics.length})
           </h2>
-          {filteredAvailableMechanics.length === 0 ? (
+          {loadingMechanics ? (
+            <div className="bg-white rounded-lg shadow-md p-8 text-center">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-primary border-t-transparent mb-4"></div>
+              <p className="text-gray-600">Loading mechanics...</p>
+            </div>
+          ) : filteredAvailableMechanics.length === 0 ? (
             <div className="bg-white rounded-lg shadow-md p-8 text-center">
               <p className="text-gray-600">No mechanics found in this distance range.</p>
               <p className="text-sm text-gray-500 mt-2">Try selecting a different distance category.</p>
@@ -480,21 +514,31 @@ const MechanicFinder = () => {
               {filteredAvailableMechanics.map((mechanic) => (
               <div
                 key={mechanic.id}
-                className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow"
+                onClick={() => handleMechanicCardClick(mechanic)}
+                className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow cursor-pointer border-2 border-transparent hover:border-primary"
               >
                 <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      {mechanic.name}
-                    </h3>
-                    <div className="flex items-center space-x-1 mt-1">
-                      <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                      <span className="text-sm font-medium">
-                        {mechanic.rating}
-                      </span>
-                      <span className="text-sm text-gray-500">
-                        ({mechanic.reviews} reviews)
-                      </span>
+                  <div className="flex items-center space-x-3">
+                    {mechanic.profileImage ? (
+                      <img src={mechanic.profileImage} alt={mechanic.name} className="w-12 h-12 rounded-full object-cover" />
+                    ) : (
+                      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Wrench className="w-6 h-6 text-primary" />
+                      </div>
+                    )}
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        {mechanic.name}
+                      </h3>
+                      <div className="flex items-center space-x-1 mt-1">
+                        <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                        <span className="text-sm font-medium">
+                          {mechanic.rating}
+                        </span>
+                        <span className="text-sm text-gray-500">
+                          ({mechanic.reviews} reviews)
+                        </span>
+                      </div>
                     </div>
                   </div>
                   <span className="bg-green-100 text-green-800 text-xs font-semibold px-2 py-1 rounded-full">
@@ -504,25 +548,27 @@ const MechanicFinder = () => {
 
                 <div className="space-y-2 mb-4">
                   <div className="flex items-center text-sm text-gray-600">
-                    <MapPin className="w-4 h-4 mr-2" />
+                    <MapPin className="w-4 h-4 mr-2 text-primary" />
                     {mechanic.distance} away
                   </div>
                   <div className="flex items-center text-sm text-gray-600">
-                    <Clock className="w-4 h-4 mr-2" />
+                    <Clock className="w-4 h-4 mr-2 text-primary" />
                     {mechanic.experience} experience
                   </div>
                   <div className="flex items-center text-sm text-gray-600">
-                    <Wrench className="w-4 h-4 mr-2" />
-                    {mechanic.specialties.join(', ')}
+                    <Wrench className="w-4 h-4 mr-2 text-primary" />
+                    {mechanic.specialties?.join(', ') || 'General Repairs'}
                   </div>
+                  {mechanic.hourlyRate && (
+                    <div className="flex items-center text-sm font-medium text-green-600">
+                      ₱{mechanic.hourlyRate}/hr
+                    </div>
+                  )}
                 </div>
 
-                <button
-                  onClick={() => handleRequestService(mechanic)}
-                  className="w-full bg-primary text-white py-2 rounded-lg font-semibold hover:bg-primary-dark transition-colors"
-                >
-                  Request Service
-                </button>
+                <div className="text-xs text-gray-400 text-center">
+                  Click to view details
+                </div>
               </div>
             ))}
             </div>
@@ -539,21 +585,31 @@ const MechanicFinder = () => {
               {busyMechanics.map((mechanic) => (
                 <div
                   key={mechanic.id}
-                  className="bg-white rounded-lg shadow-md p-6 opacity-75"
+                  onClick={() => handleMechanicCardClick(mechanic)}
+                  className="bg-white rounded-lg shadow-md p-6 opacity-75 cursor-pointer hover:opacity-100 transition-opacity"
                 >
                   <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">
-                        {mechanic.name}
-                      </h3>
-                      <div className="flex items-center space-x-1 mt-1">
-                        <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                        <span className="text-sm font-medium">
-                          {mechanic.rating}
-                        </span>
-                        <span className="text-sm text-gray-500">
-                          ({mechanic.reviews} reviews)
-                        </span>
+                    <div className="flex items-center space-x-3">
+                      {mechanic.profileImage ? (
+                        <img src={mechanic.profileImage} alt={mechanic.name} className="w-12 h-12 rounded-full object-cover" />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center">
+                          <Wrench className="w-6 h-6 text-gray-500" />
+                        </div>
+                      )}
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          {mechanic.name}
+                        </h3>
+                        <div className="flex items-center space-x-1 mt-1">
+                          <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                          <span className="text-sm font-medium">
+                            {mechanic.rating}
+                          </span>
+                          <span className="text-sm text-gray-500">
+                            ({mechanic.reviews} reviews)
+                          </span>
+                        </div>
                       </div>
                     </div>
                     <span className="bg-red-100 text-red-800 text-xs font-semibold px-2 py-1 rounded-full">
@@ -572,14 +628,105 @@ const MechanicFinder = () => {
                     </div>
                   </div>
 
-                  <button
-                    disabled
-                    className="w-full bg-gray-300 text-gray-500 py-2 rounded-lg font-semibold cursor-not-allowed"
-                  >
-                    Currently Unavailable
-                  </button>
+                  <div className="text-xs text-gray-400 text-center">
+                    Click to view details
+                  </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Download App Modal */}
+        {showDownloadModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl p-8 max-w-md w-full relative shadow-2xl">
+              {/* Close Button */}
+              <button
+                onClick={() => {
+                  setShowDownloadModal(false)
+                  setClickedMechanic(null)
+                }}
+                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+
+              {/* Modal Content */}
+              <div className="text-center">
+                {/* App Icon */}
+                <div className="w-20 h-20 bg-gradient-to-br from-primary to-red-600 rounded-2xl mx-auto mb-6 flex items-center justify-center shadow-lg">
+                  <Smartphone className="w-10 h-10 text-white" />
+                </div>
+
+                {/* Title */}
+                <h3 className="text-2xl font-bold text-gray-900 mb-2">
+                  Download MotoZapp App
+                </h3>
+
+                {/* Mechanic Info */}
+                {clickedMechanic && (
+                  <p className="text-gray-500 mb-4">
+                    To request service from <span className="font-semibold text-primary">{clickedMechanic.name}</span>
+                  </p>
+                )}
+
+                {/* Description */}
+                <p className="text-gray-600 mb-6">
+                  Download our <span className="font-bold text-primary">MotoZapp</span> mobile app to use the full potential of Find a Mechanic feature including:
+                </p>
+
+                {/* Features List */}
+                <div className="text-left bg-gray-50 rounded-xl p-4 mb-6 space-y-3">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                      <CheckCircle className="w-5 h-5 text-green-600" />
+                    </div>
+                    <span className="text-sm text-gray-700">Real-time mechanic tracking</span>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                      <CheckCircle className="w-5 h-5 text-green-600" />
+                    </div>
+                    <span className="text-sm text-gray-700">Instant service requests</span>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                      <CheckCircle className="w-5 h-5 text-green-600" />
+                    </div>
+                    <span className="text-sm text-gray-700">Emergency roadside assistance</span>
+                  </div>
+                </div>
+
+                {/* Download Buttons */}
+                <div className="flex flex-col sm:flex-row gap-3 mb-4">
+                  <a
+                    href="#"
+                    className="flex-1 flex items-center justify-center space-x-2 bg-black text-white py-3 px-4 rounded-xl hover:bg-gray-800 transition-colors"
+                  >
+                    <Download className="w-5 h-5" />
+                    <span className="font-medium">App Store</span>
+                  </a>
+                  <a
+                    href="#"
+                    className="flex-1 flex items-center justify-center space-x-2 bg-primary text-white py-3 px-4 rounded-xl hover:bg-primary-dark transition-colors"
+                  >
+                    <Download className="w-5 h-5" />
+                    <span className="font-medium">Play Store</span>
+                  </a>
+                </div>
+
+                {/* Close Button Text */}
+                <button
+                  onClick={() => {
+                    setShowDownloadModal(false)
+                    setClickedMechanic(null)
+                  }}
+                  className="text-gray-500 hover:text-gray-700 text-sm font-medium"
+                >
+                  Maybe later
+                </button>
+              </div>
             </div>
           </div>
         )}

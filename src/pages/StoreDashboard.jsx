@@ -1,13 +1,14 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useBookings } from '../contexts/BookingContext'
 import { useNotifications } from '../contexts/NotificationContext'
+import { supabase } from '../lib/supabase'
 import {
   ShoppingBag, Package, TrendingUp, Calendar, DollarSign, Users,
   CheckCircle, XCircle, Clock, Bell, LayoutDashboard, Settings,
   BarChart3, FileText, Wrench, MapPin, Phone, User, LogOut, Search,
-  Edit2, Plus, Download, Upload, RotateCcw, AlertTriangle, X, Check, Save, Store
+  Edit2, Plus, Download, Upload, RotateCcw, AlertTriangle, X, Check, Save, Store, Loader2
 } from 'lucide-react'
 import Chart from 'chart.js/auto'
 
@@ -57,8 +58,60 @@ const StoreDashboard = () => {
     navigate('/login')
   }
 
-  // Get shops owned by this store owner
-  const ownedShops = [] // TODO: Fetch from API
+  // State for shops owned by this store owner
+  const [ownedShops, setOwnedShops] = useState([])
+  const [loadingShops, setLoadingShops] = useState(true)
+
+  // Fetch shops owned by this store owner from Supabase
+  const fetchOwnedShops = useCallback(async () => {
+    if (!user?.id) return
+    
+    setLoadingShops(true)
+    try {
+      const { data, error } = await supabase
+        .from('shops')
+        .select('*')
+        .eq('owner_id', user.id)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Error fetching shops:', error)
+        return
+      }
+
+      if (data) {
+        // Transform data to match expected format
+        const transformedShops = data.map(shop => ({
+          id: shop.id,
+          name: shop.name || 'Unnamed Shop',
+          ownerName: shop.owner_name || user?.name || 'Owner',
+          ownerEmail: shop.email || user?.email || '',
+          description: shop.description || '',
+          address: shop.address || '',
+          phone: shop.phone || '',
+          email: shop.email || '',
+          hours: shop.hours || '',
+          services: shop.services || [],
+          tin: shop.tin || '',
+          image: shop.image_url || '',
+          credentialsUrl: shop.credentials_url || '',
+          validIdUrl: shop.valid_id_url || '',
+          status: shop.status || 'pending',
+          createdAt: shop.created_at,
+        }))
+        setOwnedShops(transformedShops)
+      }
+    } catch (err) {
+      console.error('Error fetching shops:', err)
+    } finally {
+      setLoadingShops(false)
+    }
+  }, [user?.id, user?.name, user?.email])
+
+  // Fetch shops on mount
+  useEffect(() => {
+    fetchOwnedShops()
+  }, [fetchOwnedShops])
 
   // Use first shop if available, or allow selection
   useEffect(() => {
@@ -93,6 +146,7 @@ const StoreDashboard = () => {
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'orders', label: 'Orders', icon: ShoppingBag },
     { id: 'bookings', label: 'Bookings', icon: Calendar },
     { id: 'products', label: 'Products', icon: Package },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
@@ -105,34 +159,143 @@ const StoreDashboard = () => {
     return ((current - previous) / previous * 100).toFixed(1)
   }
 
+  // State for dashboard stats
+  const [ordersCount, setOrdersCount] = useState({ pending: 0, total: 0 })
+  const [totalSales, setTotalSales] = useState(0)
+  const [totalQuantitySold, setTotalQuantitySold] = useState(0)
+
+  // Fetch orders count
+  useEffect(() => {
+    const fetchOrdersCount = async () => {
+      if (!selectedShopId) return
+      try {
+        const { data, error } = await supabase
+          .from('orders')
+          .select('status')
+          .eq('shop_id', selectedShopId)
+
+        if (!error && data) {
+          setOrdersCount({
+            pending: data.filter(o => o.status === 'pending').length,
+            total: data.length
+          })
+        }
+      } catch (err) {
+        console.error('Error fetching orders count:', err)
+      }
+    }
+    fetchOrdersCount()
+
+    // Real-time subscription for orders
+    const channel = supabase
+      .channel('dashboard-orders-count')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `shop_id=eq.${selectedShopId}` }, () => {
+        fetchOrdersCount()
+      })
+      .subscribe()
+
+    return () => supabase.removeChannel(channel)
+  }, [selectedShopId])
+
+  // Fetch total sales and quantity from order_items
+  useEffect(() => {
+    const fetchSalesData = async () => {
+      if (!selectedShopId) return
+      try {
+        // Get shop order IDs
+        const { data: shopOrders, error: ordersError } = await supabase
+          .from('orders')
+          .select('id')
+          .eq('shop_id', selectedShopId)
+
+        if (ordersError) {
+          console.error('Error fetching shop orders:', ordersError)
+          setTotalSales(0)
+          setTotalQuantitySold(0)
+          return
+        }
+
+        if (!shopOrders || shopOrders.length === 0) {
+          setTotalSales(0)
+          setTotalQuantitySold(0)
+          return
+        }
+
+        const shopOrderIds = shopOrders.map(o => o.id)
+
+        // Fetch order_items for this shop
+        const { data: orderItems, error } = await supabase
+          .from('order_items')
+          .select('quantity, price')
+          .in('order_id', shopOrderIds)
+
+        if (error) {
+          console.error('Error fetching order items:', error)
+          setTotalSales(0)
+          setTotalQuantitySold(0)
+          return
+        }
+
+        if (orderItems && orderItems.length > 0) {
+          const totalAmount = orderItems.reduce((sum, item) => sum + (parseFloat(item.price || 0) * (item.quantity || 0)), 0)
+          const totalQty = orderItems.reduce((sum, item) => sum + (item.quantity || 0), 0)
+          console.log('Total sales calculated:', { totalAmount, totalQty, itemsCount: orderItems.length })
+          setTotalSales(totalAmount)
+          setTotalQuantitySold(totalQty)
+        } else {
+          setTotalSales(0)
+          setTotalQuantitySold(0)
+        }
+      } catch (err) {
+        console.error('Error fetching sales data:', err)
+        setTotalSales(0)
+        setTotalQuantitySold(0)
+      }
+    }
+    fetchSalesData()
+
+    // Real-time subscription for orders and order_items
+    const channel1 = supabase
+      .channel('dashboard-orders-total')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders', filter: `shop_id=eq.${selectedShopId}` }, () => {
+        fetchSalesData()
+      })
+      .subscribe()
+
+    const channel2 = supabase
+      .channel('dashboard-items-total')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'order_items' }, () => {
+        fetchSalesData()
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel1)
+      supabase.removeChannel(channel2)
+    }
+  }, [selectedShopId])
+
   const stats = [
     {
-      label: 'Sales',
-      value: `₱${dashboardData.sales.current.toLocaleString()}`,
-      badge: `${calculatePercentage(dashboardData.sales.current, dashboardData.sales.previous) >= 0 ? '+' : ''}${calculatePercentage(dashboardData.sales.current, dashboardData.sales.previous)}%`,
+      label: 'Total Sales',
+      value: `₱${totalSales.toLocaleString()}`,
+      badge: totalQuantitySold > 0 ? `${totalQuantitySold} items sold` : 'No sales yet',
       icon: TrendingUp,
       color: 'bg-blue-500',
       textColor: 'text-white'
     },
     {
-      label: 'Profit',
-      value: `₱${dashboardData.profit.current.toLocaleString()}`,
-      badge: `${calculatePercentage(dashboardData.profit.current, dashboardData.profit.previous) >= 0 ? '+' : ''}${calculatePercentage(dashboardData.profit.current, dashboardData.profit.previous)}%`,
-      icon: DollarSign,
+      label: 'Orders',
+      value: ordersCount.total.toString(),
+      badge: `${ordersCount.pending} Pending`,
+      icon: ShoppingBag,
       color: 'bg-green-500',
       textColor: 'text-white'
     },
     {
-      label: 'Mechanics',
-      value: `${dashboardData.mechanics.available}/${dashboardData.mechanics.total}`,
-      badge: 'Available',
-      icon: Users,
-      color: 'bg-purple-500',
-      textColor: 'text-white'
-    },
-    {
-      label: 'Products',
-      value: dashboardData.products.total.toString(),
+      label: 'Items Sold',
+      value: totalQuantitySold.toString(),
+      badge: 'Total quantity',
       icon: Package,
       color: 'bg-amber-500',
       textColor: 'text-white'
@@ -148,6 +311,12 @@ const StoreDashboard = () => {
           confirmedBookings={confirmedBookings}
           dashboardData={dashboardData}
           setDashboardData={setDashboardData}
+          selectedShopId={selectedShopId}
+        />
+      case 'orders':
+        return <OrdersView 
+          selectedShopId={selectedShopId}
+          user={user}
         />
       case 'bookings':
         return <BookingsView
@@ -158,11 +327,23 @@ const StoreDashboard = () => {
           onReject={handleRejectBooking}
         />
       case 'products':
-        return <ProductsView dashboardData={dashboardData} setDashboardData={setDashboardData} />
+        return <ProductsView 
+          dashboardData={dashboardData} 
+          setDashboardData={setDashboardData}
+          user={user}
+          ownedShops={ownedShops}
+          selectedShopId={selectedShopId}
+        />
       case 'analytics':
-        return <AnalyticsView dashboardData={dashboardData} />
+        return <AnalyticsView dashboardData={dashboardData} selectedShopId={selectedShopId} />
       case 'profile':
-        return <ProfileView selectedShopId={selectedShopId} ownedShops={ownedShops} setSelectedShopId={setSelectedShopId} />
+        return <ProfileView 
+          selectedShopId={selectedShopId} 
+          ownedShops={ownedShops} 
+          setSelectedShopId={setSelectedShopId} 
+          loadingShops={loadingShops}
+          onRefresh={fetchOwnedShops}
+        />
       case 'settings':
         return <SettingsView dashboardData={dashboardData} setDashboardData={setDashboardData} />
       default:
@@ -172,6 +353,7 @@ const StoreDashboard = () => {
           confirmedBookings={confirmedBookings}
           dashboardData={dashboardData}
           setDashboardData={setDashboardData}
+          selectedShopId={selectedShopId}
         />
     }
   }
@@ -225,8 +407,19 @@ const StoreDashboard = () => {
         <header className="bg-white border-b border-gray-200 px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 capitalize">{currentView}</h1>
-              <p className="text-sm text-gray-600 mt-1">Welcome back, {user?.name || 'Store Owner'}</p>
+              {currentView === 'profile' && ownedShops.length > 0 ? (
+                <>
+                  <h1 className="text-2xl font-bold text-gray-900">{ownedShops[0]?.name || 'My Shop'}</h1>
+                  <p className="text-sm text-gray-600 mt-1">Shop Profile • Owner: {user?.name || 'Store Owner'}</p>
+                </>
+              ) : (
+                <>
+                  <h1 className="text-2xl font-bold text-gray-900 capitalize">{currentView}</h1>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {ownedShops.length > 0 ? ownedShops[0]?.name : 'Welcome back'}, {user?.name || 'Store Owner'}
+                  </p>
+                </>
+              )}
             </div>
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2 bg-amber-500 text-white px-4 py-2 rounded-lg">
@@ -254,16 +447,261 @@ const StoreDashboard = () => {
 }
 
 // Dashboard View Component
-const DashboardView = ({ stats, pendingBookings, confirmedBookings, dashboardData, setDashboardData }) => {
+const DashboardView = ({ stats, pendingBookings, confirmedBookings, dashboardData, setDashboardData, selectedShopId }) => {
   const salesChartRef = useRef(null)
-  const productsChartRef = useRef(null)
   const [salesPeriod, setSalesPeriod] = useState(7)
+  const [recentOrders, setRecentOrders] = useState([])
+  const [salesData, setSalesData] = useState({ labels: [], data: [] })
+  const [customerPurchases, setCustomerPurchases] = useState([])
+  const [periodStats, setPeriodStats] = useState({ totalAmount: 0, totalQty: 0 })
+
+  // Fetch real sales data from order_items
+  useEffect(() => {
+    const fetchSalesData = async () => {
+      if (!selectedShopId) return
+
+      try {
+        // Get date range
+        const endDate = new Date()
+        const startDate = new Date()
+        startDate.setDate(startDate.getDate() - salesPeriod)
+
+        // Get shop orders in date range
+        const { data: shopOrders, error: ordersError } = await supabase
+          .from('orders')
+          .select('id, created_at')
+          .eq('shop_id', selectedShopId)
+          .gte('created_at', startDate.toISOString())
+          .lte('created_at', endDate.toISOString())
+
+        if (ordersError) {
+          console.error('Error fetching shop orders for sales overview:', ordersError)
+          setSalesData({ labels: [], data: [] })
+          setPeriodStats({ totalAmount: 0, totalQty: 0 })
+          return
+        }
+
+        if (!shopOrders || shopOrders.length === 0) {
+          console.log('No shop orders in date range')
+          setSalesData({ labels: [], data: [] })
+          setPeriodStats({ totalAmount: 0, totalQty: 0 })
+          return
+        }
+
+        const shopOrderIds = shopOrders.map(o => o.id)
+        console.log('Shop order IDs:', shopOrderIds)
+
+        // Fetch order_items for these orders
+        const { data: orderItems, error: itemsError } = await supabase
+          .from('order_items')
+          .select('quantity, price, order_id, created_at')
+          .in('order_id', shopOrderIds)
+
+        if (itemsError) {
+          console.error('Error fetching order items for sales overview:', itemsError)
+          setSalesData({ labels: [], data: [] })
+          setPeriodStats({ totalAmount: 0, totalQty: 0 })
+          return
+        }
+
+        console.log('Order items fetched for sales overview:', orderItems)
+
+        // Group by date
+        const salesByDate = {}
+        const qtyByDate = {}
+
+        // Generate all dates in range
+        for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+          const dateKey = d.toISOString().split('T')[0]
+          salesByDate[dateKey] = 0
+          qtyByDate[dateKey] = 0
+        }
+
+        // Get order dates map
+        const orderDateMap = {}
+        shopOrders.forEach(order => {
+          orderDateMap[order.id] = new Date(order.created_at).toISOString().split('T')[0]
+        })
+
+        // Sum sales and quantities by date
+        (orderItems || []).forEach(item => {
+          const orderDate = orderDateMap[item.order_id]
+          if (orderDate) {
+            salesByDate[orderDate] = (salesByDate[orderDate] || 0) + (parseFloat(item.price || 0) * (item.quantity || 0))
+            qtyByDate[orderDate] = (qtyByDate[orderDate] || 0) + (item.quantity || 0)
+          }
+        })
+
+        // Convert to arrays
+        const labels = []
+        const data = []
+        Object.keys(salesByDate).sort().forEach(date => {
+          const d = new Date(date)
+          labels.push(d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))
+          data.push(salesByDate[date])
+        })
+
+        setSalesData({ labels, data })
+
+        // Calculate totals for this period
+        const totalSales = (orderItems || []).reduce((sum, item) => sum + (parseFloat(item.price || 0) * (item.quantity || 0)), 0)
+        const totalQty = (orderItems || []).reduce((sum, item) => sum + (item.quantity || 0), 0)
+        setPeriodStats({ totalAmount: totalSales, totalQty: totalQty })
+
+        // Update dashboard data with totals
+        setDashboardData(prev => ({
+          ...prev,
+          sales: { current: totalSales, previous: prev.sales.previous }
+        }))
+
+      } catch (err) {
+        console.error('Error fetching sales:', err)
+      }
+    }
+
+    fetchSalesData()
+
+    // Real-time subscription
+    const channel = supabase
+      .channel('dashboard-sales-overview')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'order_items' }, () => {
+        fetchSalesData()
+      })
+      .subscribe()
+
+    return () => supabase.removeChannel(channel)
+  }, [selectedShopId, salesPeriod, setDashboardData])
+
+  // Fetch recent orders for transactions
+  useEffect(() => {
+    const fetchRecentOrders = async () => {
+      if (!selectedShopId) return
+
+      try {
+        const { data, error } = await supabase
+          .from('orders')
+          .select(`
+            *,
+            order_items (
+              id,
+              quantity,
+              price,
+              product_name
+            )
+          `)
+          .eq('shop_id', selectedShopId)
+          .order('created_at', { ascending: false })
+          .limit(5)
+
+        if (error) {
+          console.error('Error fetching recent orders:', error)
+          throw error
+        }
+        
+        console.log('Recent orders fetched:', data)
+        setRecentOrders(data || [])
+      } catch (err) {
+        console.error('Error fetching orders:', err)
+        setRecentOrders([])
+      }
+    }
+
+    fetchRecentOrders()
+
+    // Real-time subscription
+    const channel = supabase
+      .channel('dashboard-orders')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders', filter: `shop_id=eq.${selectedShopId}` }, () => {
+        fetchRecentOrders()
+      })
+      .subscribe()
+
+    return () => supabase.removeChannel(channel)
+  }, [selectedShopId])
+
+  // Fetch customer purchases from order_items
+  useEffect(() => {
+    const fetchCustomerPurchases = async () => {
+      if (!selectedShopId) return
+
+      try {
+        // Get shop order IDs first
+        const { data: shopOrders, error: ordersError } = await supabase
+          .from('orders')
+          .select('id, customer_name, created_at')
+          .eq('shop_id', selectedShopId)
+
+        if (ordersError) {
+          console.error('Error fetching shop orders for purchases:', ordersError)
+          setCustomerPurchases([])
+          return
+        }
+
+        if (!shopOrders || shopOrders.length === 0) {
+          console.log('No shop orders found')
+          setCustomerPurchases([])
+          return
+        }
+
+        const shopOrderIds = shopOrders.map(o => o.id)
+        const orderMap = {}
+        shopOrders.forEach(order => {
+          orderMap[order.id] = order
+        })
+
+        // Fetch order_items for these orders
+        const { data: orderItems, error } = await supabase
+          .from('order_items')
+          .select('*')
+          .in('order_id', shopOrderIds)
+          .order('created_at', { ascending: false })
+          .limit(20)
+
+        if (error) {
+          console.error('Error fetching order items:', error)
+          setCustomerPurchases([])
+          return
+        }
+        
+        // Transform data
+        const purchases = (orderItems || []).map(item => {
+          const order = orderMap[item.order_id]
+          return {
+            id: item.id,
+            customer_name: order?.customer_name || 'Customer',
+            product_name: item.product_name || 'Product',
+            quantity: item.quantity || 0,
+            amount: parseFloat(item.price || 0) * (item.quantity || 0),
+            created_at: order?.created_at || item.created_at
+          }
+        })
+
+        console.log('Customer purchases fetched:', purchases)
+        setCustomerPurchases(purchases)
+      } catch (err) {
+        console.error('Error fetching customer purchases:', err)
+        setCustomerPurchases([])
+      }
+    }
+
+    fetchCustomerPurchases()
+
+    // Real-time subscription for order_items
+    const channel = supabase
+      .channel('dashboard-order-items')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'order_items' }, () => {
+        fetchCustomerPurchases()
+      })
+      .subscribe()
+
+    return () => supabase.removeChannel(channel)
+  }, [selectedShopId])
 
   useEffect(() => {
     if (!salesChartRef.current) return
 
     const ctx = salesChartRef.current.getContext('2d')
-    const chartData = dashboardData.salesHistory[salesPeriod] || dashboardData.salesHistory[7]
+    const chartData = salesData.labels.length > 0 ? salesData : (dashboardData.salesHistory[salesPeriod] || dashboardData.salesHistory[7])
 
     const gradient = ctx.createLinearGradient(0, 0, 0, 300)
     gradient.addColorStop(0, 'rgba(30, 58, 138, 0.3)')
@@ -300,31 +738,8 @@ const DashboardView = ({ stats, pendingBookings, confirmedBookings, dashboardDat
     })
 
     return () => chart.destroy()
-  }, [salesPeriod, dashboardData.salesHistory])
+  }, [salesPeriod, salesData, dashboardData.salesHistory])
 
-  useEffect(() => {
-    if (!productsChartRef.current) return
-
-    // TODO: Fetch products distribution data from API
-    const ctx = productsChartRef.current.getContext('2d')
-    const chart = new Chart(ctx, {
-      type: 'doughnut',
-      data: {
-        labels: [], // TODO: Fetch from API
-        datasets: [{
-          data: [], // TODO: Fetch from API
-          backgroundColor: ['#1e3a8a', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6']
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { position: 'right' } }
-      }
-    })
-
-    return () => chart.destroy()
-  }, [])
 
   const formatDate = (date) => {
     const now = new Date()
@@ -368,7 +783,17 @@ const DashboardView = ({ stats, pendingBookings, confirmedBookings, dashboardDat
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">Sales Overview</h2>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Sales Overview</h2>
+              <div className="flex items-center space-x-4 mt-1">
+                <span className="text-sm text-gray-500">
+                  Total: <span className="font-semibold text-primary">₱{periodStats.totalAmount.toLocaleString()}</span>
+                </span>
+                <span className="text-sm text-gray-500">
+                  Items: <span className="font-semibold text-green-600">{periodStats.totalQty}</span>
+                </span>
+              </div>
+            </div>
             <select
               value={salesPeriod}
               onChange={(e) => setSalesPeriod(parseInt(e.target.value))}
@@ -385,9 +810,45 @@ const DashboardView = ({ stats, pendingBookings, confirmedBookings, dashboardDat
         </div>
 
         <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Products Distribution</h2>
-          <div className="h-64">
-            <canvas ref={productsChartRef}></canvas>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+            <Users className="w-5 h-5 text-purple-500 mr-2" />
+            Customer Purchases
+          </h2>
+          <div className="h-64 overflow-y-auto">
+            {customerPurchases.length === 0 ? (
+              <div className="flex items-center justify-center h-full text-gray-500">
+                <div className="text-center">
+                  <ShoppingBag className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                  <p>No purchases yet</p>
+                  <p className="text-sm text-gray-400 mt-1">Customer orders will appear here</p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {customerPurchases.map((purchase, index) => (
+                  <div key={purchase.id || index} className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
+                          <User className="w-4 h-4 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">{purchase.customer_name || 'Customer'}</p>
+                          <p className="text-xs text-gray-400">{new Date(purchase.created_at).toLocaleString()}</p>
+                        </div>
+                      </div>
+                      <span className="text-lg font-bold text-primary">₱{parseFloat(purchase.amount).toLocaleString()}</span>
+                    </div>
+                    <div className="ml-10 flex items-center justify-between bg-white p-2 rounded border border-gray-100">
+                      <div>
+                        <p className="text-sm font-medium text-gray-800">{purchase.product_name}</p>
+                      </div>
+                      <span className="text-sm text-gray-600 bg-gray-100 px-2 py-1 rounded">Qty: {purchase.quantity}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -418,24 +879,30 @@ const DashboardView = ({ stats, pendingBookings, confirmedBookings, dashboardDat
         <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-gray-900 flex items-center">
-              <Clock className="w-5 h-5 text-blue-500 mr-2" />
-              Recent Transactions
+              <ShoppingBag className="w-5 h-5 text-blue-500 mr-2" />
+              Recent Orders
             </h2>
-            <button className="text-primary hover:text-primary-dark">
-              <Plus className="w-5 h-5" />
-            </button>
           </div>
           <div className="space-y-3">
-            {dashboardData.transactions.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">No recent transactions</div>
+            {recentOrders.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">No recent orders</div>
             ) : (
-              dashboardData.transactions.slice(0, 5).map(transaction => (
-                <div key={transaction.id} className="flex justify-between items-center p-3 bg-gray-50 border border-gray-200 rounded-lg">
+              recentOrders.map(order => (
+                <div key={order.id} className="flex justify-between items-center p-3 bg-gray-50 border border-gray-200 rounded-lg">
                   <div>
-                    <p className="text-sm font-medium text-gray-900">{transaction.name}</p>
-                    <p className="text-xs text-gray-600">{formatDate(transaction.date)}</p>
+                    <p className="text-sm font-medium text-gray-900">
+                      Order #{order.id.slice(0, 8).toUpperCase()}
+                    </p>
+                    <p className="text-xs text-gray-600">{formatDate(order.created_at)}</p>
                   </div>
-                  <span className="text-sm font-semibold text-gray-900">₱{transaction.amount.toLocaleString()}</span>
+                  <div className="text-right">
+                    <span className="text-sm font-semibold text-gray-900">₱{parseFloat(order.total_amount).toLocaleString()}</span>
+                    <p className={`text-xs ${
+                      order.status === 'pending' ? 'text-amber-600' : 
+                      order.status === 'confirmed' ? 'text-blue-600' : 
+                      order.status === 'delivered' ? 'text-green-600' : 'text-gray-600'
+                    }`}>{order.status}</p>
+                  </div>
                 </div>
               ))
             )}
@@ -443,6 +910,215 @@ const DashboardView = ({ stats, pendingBookings, confirmedBookings, dashboardDat
         </div>
       </div>
     </>
+  )
+}
+
+// Orders View Component - Shows all orders for the shop
+const OrdersView = ({ selectedShopId, user }) => {
+  const [orders, setOrders] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState('pending')
+
+  useEffect(() => {
+    const fetchOrders = async () => {
+      if (!selectedShopId) return
+      
+      setLoading(true)
+      try {
+        const { data, error } = await supabase
+          .from('orders')
+          .select(`
+            *,
+            order_items (
+              *,
+              products:product_id (name, image_url, price)
+            )
+          `)
+          .eq('shop_id', selectedShopId)
+          .order('created_at', { ascending: false })
+
+        if (error) throw error
+        setOrders(data || [])
+      } catch (err) {
+        console.error('Error fetching orders:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchOrders()
+
+    // Set up real-time subscription for new orders
+    const channel = supabase
+      .channel('orders-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `shop_id=eq.${selectedShopId}` }, () => {
+        fetchOrders()
+      })
+      .subscribe()
+
+    return () => supabase.removeChannel(channel)
+  }, [selectedShopId])
+
+  const updateOrderStatus = async (orderId, newStatus) => {
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .eq('id', orderId)
+
+      if (error) throw error
+
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o))
+    } catch (err) {
+      console.error('Error updating order:', err)
+      alert('Failed to update order status')
+    }
+  }
+
+  const filteredOrders = orders.filter(o => {
+    if (activeTab === 'pending') return o.status === 'pending'
+    if (activeTab === 'confirmed') return o.status === 'confirmed'
+    if (activeTab === 'completed') return ['delivered', 'completed'].includes(o.status)
+    if (activeTab === 'cancelled') return o.status === 'cancelled'
+    return true
+  })
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'pending': return 'bg-amber-100 text-amber-800'
+      case 'confirmed': return 'bg-blue-100 text-blue-800'
+      case 'shipped': return 'bg-purple-100 text-purple-800'
+      case 'delivered': 
+      case 'completed': return 'bg-green-100 text-green-800'
+      case 'cancelled': return 'bg-red-100 text-red-800'
+      default: return 'bg-gray-100 text-gray-800'
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Tabs */}
+      <div className="bg-white rounded-lg shadow-md border border-gray-200 p-1 flex space-x-1">
+        {[
+          { id: 'pending', label: 'Pending', count: orders.filter(o => o.status === 'pending').length },
+          { id: 'confirmed', label: 'Confirmed', count: orders.filter(o => o.status === 'confirmed').length },
+          { id: 'completed', label: 'Completed', count: orders.filter(o => ['delivered', 'completed'].includes(o.status)).length },
+          { id: 'cancelled', label: 'Cancelled', count: orders.filter(o => o.status === 'cancelled').length },
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex-1 py-2 px-4 rounded-lg font-medium transition-colors ${
+              activeTab === tab.id
+                ? 'bg-primary text-white'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            {tab.label} ({tab.count})
+          </button>
+        ))}
+      </div>
+
+      {/* Orders List */}
+      {filteredOrders.length === 0 ? (
+        <div className="bg-white rounded-lg shadow-md border border-gray-200 p-12 text-center">
+          <ShoppingBag className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No {activeTab} orders</h3>
+          <p className="text-gray-500">Orders will appear here when customers place them</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {filteredOrders.map(order => (
+            <div key={order.id} className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <p className="text-sm text-gray-500">Order #{order.id.slice(0, 8).toUpperCase()}</p>
+                  <p className="text-xs text-gray-400">{new Date(order.created_at).toLocaleString()}</p>
+                </div>
+                <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
+                  {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                </span>
+              </div>
+
+              {/* Order Items */}
+              <div className="space-y-3 mb-4">
+                {order.order_items?.map(item => (
+                  <div key={item.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                    {item.products?.image_url ? (
+                      <img src={item.products.image_url} alt={item.products?.name} className="w-12 h-12 rounded-lg object-cover" />
+                    ) : (
+                      <div className="w-12 h-12 rounded-lg bg-gray-200 flex items-center justify-center">
+                        <Package className="w-6 h-6 text-gray-400" />
+                      </div>
+                    )}
+                    <div className="flex-1">
+                      <p className="font-medium text-gray-900">{item.products?.name || 'Product'}</p>
+                      <p className="text-sm text-gray-500">Qty: {item.quantity} × ₱{parseFloat(item.price).toLocaleString()}</p>
+                    </div>
+                    <p className="font-semibold text-gray-900">₱{(item.quantity * parseFloat(item.price)).toLocaleString()}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Order Total */}
+              <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                <div>
+                  <p className="text-sm text-gray-500">Payment: {order.payment_method}</p>
+                  <p className="text-sm text-gray-500">Contact: {order.contact_number}</p>
+                  <p className="text-sm font-medium text-gray-700 mt-1">
+                    Total Items: {order.order_items?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm text-gray-500">Total Amount</p>
+                  <p className="text-xl font-bold text-primary">₱{parseFloat(order.total_amount).toLocaleString()}</p>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              {order.status === 'pending' && (
+                <div className="flex space-x-3 mt-4 pt-4 border-t border-gray-200">
+                  <button
+                    onClick={() => updateOrderStatus(order.id, 'confirmed')}
+                    className="flex-1 py-2 px-4 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition-colors flex items-center justify-center space-x-2"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    <span>Confirm Order</span>
+                  </button>
+                  <button
+                    onClick={() => updateOrderStatus(order.id, 'cancelled')}
+                    className="flex-1 py-2 px-4 bg-red-500 text-white rounded-lg font-medium hover:bg-red-600 transition-colors flex items-center justify-center space-x-2"
+                  >
+                    <XCircle className="w-4 h-4" />
+                    <span>Cancel</span>
+                  </button>
+                </div>
+              )}
+
+              {order.status === 'confirmed' && (
+                <div className="flex space-x-3 mt-4 pt-4 border-t border-gray-200">
+                  <button
+                    onClick={() => updateOrderStatus(order.id, 'delivered')}
+                    className="flex-1 py-2 px-4 bg-primary text-white rounded-lg font-medium hover:bg-primary-dark transition-colors flex items-center justify-center space-x-2"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    <span>Mark as Picked Up / Delivered</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -713,15 +1389,70 @@ const BookingsView = ({ pendingBookings, confirmedBookings, bookingHistory, onAp
 }
 
 // Products View Component
-const ProductsView = ({ dashboardData, setDashboardData }) => {
+const ProductsView = ({ dashboardData, setDashboardData, user, ownedShops, selectedShopId }) => {
   const [searchQuery, setSearchQuery] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
-  const [allProducts, setAllProducts] = useState([]) // TODO: Fetch from API
+  const [allProducts, setAllProducts] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showUploadModal, setShowUploadModal] = useState(false)
+  const [showProductDetail, setShowProductDetail] = useState(null)
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState('')
+
+  // Upload form state
+  const [productForm, setProductForm] = useState({
+    name: '',
+    price: '',
+    brand: '',
+    quantity: 1,
+    description: '',
+    image: null,
+    imagePreview: null
+  })
+
+  // Fetch products from Supabase
+  const fetchProducts = useCallback(async () => {
+    if (!user?.id) return
+    setLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('owner_id', user.id)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      setAllProducts(data || [])
+    } catch (err) {
+      console.error('Error fetching products:', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    fetchProducts()
+  }, [fetchProducts])
+
+  // Get stock status based on percentage of original quantity
+  const getStockStatus = (quantity, originalQuantity) => {
+    if (quantity <= 0) return 'out'
+    // If original quantity exists, use percentage calculation
+    if (originalQuantity && originalQuantity > 0) {
+      const percentage = (quantity / originalQuantity) * 100
+      if (percentage <= 10) return 'low'
+    } else {
+      // Fallback: if no original quantity, use absolute threshold
+      if (quantity <= 5) return 'low'
+    }
+    return 'in'
+  }
 
   const filteredProducts = allProducts.filter(product => {
-    const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          product.sku.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesFilter = filterStatus === 'all' || product.status === filterStatus
+    const matchesSearch = product.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          product.brand?.toLowerCase().includes(searchQuery.toLowerCase())
+    const status = getStockStatus(product.quantity, product.original_quantity)
+    const matchesFilter = filterStatus === 'all' || status === filterStatus
     return matchesSearch && matchesFilter
   })
 
@@ -735,14 +1466,152 @@ const ProductsView = ({ dashboardData, setDashboardData }) => {
   }
 
   const stats = [
-    { label: 'In Stock', value: allProducts.filter(p => p.status === 'in').length, color: 'bg-green-500' },
-    { label: 'Low Stock', value: allProducts.filter(p => p.status === 'low').length, color: 'bg-amber-500' },
-    { label: 'Out of Stock', value: allProducts.filter(p => p.status === 'out').length, color: 'bg-red-500' },
+    { label: 'In Stock', value: allProducts.filter(p => getStockStatus(p.quantity, p.original_quantity) === 'in').length, color: 'bg-green-500' },
+    { label: 'Low Stock', value: allProducts.filter(p => getStockStatus(p.quantity, p.original_quantity) === 'low').length, color: 'bg-amber-500' },
+    { label: 'Out of Stock', value: allProducts.filter(p => getStockStatus(p.quantity, p.original_quantity) === 'out').length, color: 'bg-red-500' },
     { label: 'Total Parts', value: allProducts.length, color: 'bg-blue-500' },
   ]
 
+  // Handle image selection
+  const handleImageChange = (e) => {
+    const file = e.target.files[0]
+    if (file) {
+      setProductForm(prev => ({
+        ...prev,
+        image: file,
+        imagePreview: URL.createObjectURL(file)
+      }))
+    }
+  }
+
+  // Handle form input changes
+  const handleFormChange = (field, value) => {
+    setProductForm(prev => ({ ...prev, [field]: value }))
+  }
+
+  // Upload product to Supabase
+  const handleUploadProduct = async () => {
+    if (!productForm.name || !productForm.price) {
+      setError('Please fill in product name and price')
+      return
+    }
+
+    setUploading(true)
+    setError('')
+
+    try {
+      let imageUrl = null
+
+      // Upload image if provided
+      if (productForm.image) {
+        const fileExt = productForm.image.name.split('.').pop()
+        const fileName = `${user.id}/${Date.now()}.${fileExt}`
+        
+        const { error: uploadError } = await supabase.storage
+          .from('product-images')
+          .upload(fileName, productForm.image)
+
+        if (uploadError) {
+          console.error('Image upload error:', uploadError)
+        } else {
+          const { data: { publicUrl } } = supabase.storage
+            .from('product-images')
+            .getPublicUrl(fileName)
+          imageUrl = publicUrl
+        }
+      }
+
+      // Get shop_id from ownedShops
+      const shopId = selectedShopId || (ownedShops.length > 0 ? ownedShops[0].id : null)
+
+      // Insert product
+      const initialQuantity = parseInt(productForm.quantity) || 0
+      const { error: insertError } = await supabase
+        .from('products')
+        .insert({
+          owner_id: user.id,
+          shop_id: shopId,
+          name: productForm.name,
+          price: parseFloat(productForm.price),
+          brand: productForm.brand || null,
+          quantity: initialQuantity,
+          original_quantity: initialQuantity, // Track original quantity for stock % calculation
+          description: productForm.description || null,
+          image_url: imageUrl,
+          status: 'active',
+          ratings: 0,
+          ratings_count: 0
+        })
+
+      if (insertError) throw insertError
+
+      // Reset form and close modal
+      setProductForm({
+        name: '',
+        price: '',
+        brand: '',
+        quantity: 1,
+        description: '',
+        image: null,
+        imagePreview: null
+      })
+      setShowUploadModal(false)
+      fetchProducts()
+    } catch (err) {
+      console.error('Upload error:', err)
+      setError(err.message || 'Failed to upload product')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  // Update product quantity
+  const handleQuantityChange = async (productId, newQuantity) => {
+    if (newQuantity < 0) return
+    
+    try {
+      const { error } = await supabase
+        .from('products')
+        .update({ quantity: newQuantity })
+        .eq('id', productId)
+
+      if (error) throw error
+      
+      // Update local state
+      setAllProducts(prev => prev.map(p => 
+        p.id === productId ? { ...p, quantity: newQuantity } : p
+      ))
+      
+      if (showProductDetail?.id === productId) {
+        setShowProductDetail(prev => ({ ...prev, quantity: newQuantity }))
+      }
+    } catch (err) {
+      console.error('Error updating quantity:', err)
+    }
+  }
+
+  // Delete product
+  const handleDeleteProduct = async (productId) => {
+    if (!window.confirm('Are you sure you want to delete this product?')) return
+    
+    try {
+      const { error } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', productId)
+
+      if (error) throw error
+      
+      setShowProductDetail(null)
+      fetchProducts()
+    } catch (err) {
+      console.error('Error deleting product:', err)
+    }
+  }
+
   return (
     <div className="space-y-6">
+      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {stats.map((stat, index) => (
           <div key={index} className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
@@ -757,18 +1626,7 @@ const ProductsView = ({ dashboardData, setDashboardData }) => {
         ))}
       </div>
 
-      {allProducts.filter(p => p.status === 'low' || p.status === 'out').length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-center space-x-3">
-          <AlertTriangle className="w-6 h-6 text-amber-600" />
-          <div>
-            <h3 className="font-semibold text-amber-900">Critical Stock Alert</h3>
-            <p className="text-sm text-amber-700">
-              {allProducts.filter(p => p.status === 'low' || p.status === 'out').length} parts need immediate restocking
-            </p>
-          </div>
-        </div>
-      )}
-
+      {/* Search and Filter */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="relative w-full sm:w-auto flex-grow">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -780,76 +1638,575 @@ const ProductsView = ({ dashboardData, setDashboardData }) => {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <div className="flex space-x-2">
-          <button
-            onClick={() => setFilterStatus('all')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              filterStatus === 'all' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            All
-          </button>
-          <button
-            onClick={() => setFilterStatus('in')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              filterStatus === 'in' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            In Stock
-          </button>
-          <button
-            onClick={() => setFilterStatus('low')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              filterStatus === 'low' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            Low Stock
-          </button>
-          <button
-            onClick={() => setFilterStatus('out')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              filterStatus === 'out' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            Out of Stock
-          </button>
+        <div className="flex space-x-2 flex-wrap gap-2">
+          {['all', 'in', 'low', 'out'].map(status => (
+            <button
+              key={status}
+              onClick={() => setFilterStatus(status)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                filterStatus === status ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              {status === 'all' ? 'All' : status === 'in' ? 'In Stock' : status === 'low' ? 'Low Stock' : 'Out of Stock'}
+            </button>
+          ))}
         </div>
       </div>
 
+      {/* Upload Button */}
+      <div className="flex justify-end">
+        <button
+          onClick={() => setShowUploadModal(true)}
+          className="flex items-center space-x-2 px-6 py-3 bg-primary text-white rounded-lg font-semibold hover:bg-primary-dark transition-colors shadow-lg"
+        >
+          <Plus className="w-5 h-5" />
+          <span>Upload Product</span>
+        </button>
+      </div>
+
+      {/* Products Grid */}
       <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Parts Inventory</h2>
-        {filteredProducts.length === 0 ? (
+        {loading ? (
+          <div className="text-center py-12 text-gray-500">
+            <Loader2 className="w-12 h-12 mx-auto mb-4 text-primary animate-spin" />
+            <p>Loading products...</p>
+          </div>
+        ) : filteredProducts.length === 0 ? (
           <div className="text-center py-12 text-gray-500">
             <Package className="w-12 h-12 mx-auto mb-4 text-gray-400" />
             <p>No products found matching your criteria.</p>
+            <p className="text-sm text-gray-400 mt-2">Click "Upload Product" to add your first product</p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredProducts.map(product => {
-              const IconComponent = product.icon
+              const status = getStockStatus(product.quantity, product.original_quantity)
               return (
-              <div key={product.id} className="flex items-center justify-between border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                <div className="flex items-center space-x-4">
-                  <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center text-gray-600">
-                    {IconComponent && <IconComponent className="w-6 h-6" />}
+                <div 
+                  key={product.id} 
+                  onClick={() => setShowProductDetail(product)}
+                  className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow cursor-pointer bg-white"
+                >
+                  {/* Product Image */}
+                  <div className="w-full h-48 bg-gray-100 flex items-center justify-center overflow-hidden">
+                    {product.image_url ? (
+                      <img src={product.image_url} alt={product.name} className="w-full h-full object-contain" />
+                    ) : (
+                      <Package className="w-16 h-16 text-gray-300" />
+                    )}
                   </div>
-                  <div>
-                    <p className="font-medium text-gray-900">{product.name}</p>
-                    <p className="text-sm text-gray-500">SKU: {product.sku}</p>
+                  {/* Product Info */}
+                  <div className="p-4">
+                    <h3 className="font-semibold text-gray-900 truncate">{product.name}</h3>
+                    <p className="text-lg font-bold text-primary mt-1">₱{parseFloat(product.price).toLocaleString()}</p>
+                    <div className="flex items-center justify-between mt-2">
+                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusClass(status)}`}>
+                        {status === 'in' ? 'In Stock' : status === 'low' ? 'Low Stock' : 'Out of Stock'}
+                      </span>
+                      <span className="text-sm text-gray-500">{product.quantity} units</span>
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center space-x-4">
-                  <span className={`px-3 py-1 text-xs font-medium rounded-full ${getStatusClass(product.status)}`}>
-                    {product.status === 'in' ? 'In Stock' : product.status === 'low' ? 'Low Stock' : 'Out of Stock'}
-                  </span>
-                  <span className="text-gray-700">{product.units} units</span>
-                  <button className="text-primary hover:text-primary-dark">
-                    <Edit2 className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
               )
             })}
+          </div>
+        )}
+      </div>
+
+      {/* Upload Product Modal */}
+      {showUploadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold text-gray-900">Upload Product</h2>
+                <button onClick={() => setShowUploadModal(false)} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              {error && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+                  {error}
+                </div>
+              )}
+
+              <div className="space-y-4">
+                {/* Product Image */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Product Image</label>
+                  <div className="relative">
+                    <div className="w-full h-48 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center overflow-hidden bg-gray-50">
+                      {productForm.imagePreview ? (
+                        <img src={productForm.imagePreview} alt="Preview" className="max-w-full max-h-48 object-contain" />
+                      ) : (
+                        <div className="text-center text-gray-400">
+                          <Upload className="w-12 h-12 mx-auto mb-2" />
+                          <p className="text-sm">Click to upload image</p>
+                        </div>
+                      )}
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageChange}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                {/* Product Name */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Product Name *</label>
+                  <input
+                    type="text"
+                    value={productForm.name}
+                    onChange={(e) => handleFormChange('name', e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-gray-900 bg-white"
+                    placeholder="e.g., Motul Oil 10W-40"
+                  />
+                </div>
+
+                {/* Price */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Price (₱) *</label>
+                  <input
+                    type="number"
+                    value={productForm.price}
+                    onChange={(e) => handleFormChange('price', e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-gray-900 bg-white"
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+
+                {/* Brand */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Brand</label>
+                  <input
+                    type="text"
+                    value={productForm.brand}
+                    onChange={(e) => handleFormChange('brand', e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-gray-900 bg-white"
+                    placeholder="e.g., Motul, Michelin"
+                  />
+                </div>
+
+                {/* Quantity */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Quantity</label>
+                  <div className="flex items-center space-x-3">
+                    <button
+                      type="button"
+                      onClick={() => handleFormChange('quantity', Math.max(0, productForm.quantity - 1))}
+                      className="w-10 h-10 flex items-center justify-center bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+                    >
+                      -
+                    </button>
+                    <input
+                      type="number"
+                      value={productForm.quantity}
+                      onChange={(e) => handleFormChange('quantity', parseInt(e.target.value) || 0)}
+                      className="w-20 px-3 py-2 text-center border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-gray-900 bg-white"
+                      min="0"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleFormChange('quantity', productForm.quantity + 1)}
+                      className="w-10 h-10 flex items-center justify-center bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                {/* Description */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                  <textarea
+                    value={productForm.description}
+                    onChange={(e) => handleFormChange('description', e.target.value)}
+                    rows={3}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-gray-900 bg-white"
+                    placeholder="Product description..."
+                  />
+                </div>
+
+                {/* Warning */}
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start space-x-2">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-sm text-amber-700">Product is always for pickup. Customers must collect their orders from your shop.</p>
+                </div>
+              </div>
+
+              {/* Submit Button */}
+              <div className="mt-6 flex space-x-3">
+                <button
+                  onClick={() => setShowUploadModal(false)}
+                  className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleUploadProduct}
+                  disabled={uploading}
+                  className="flex-1 px-4 py-3 bg-primary text-white rounded-lg font-semibold hover:bg-primary-dark transition-colors disabled:opacity-50 flex items-center justify-center space-x-2"
+                >
+                  {uploading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span>Uploading...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-5 h-5" />
+                      <span>Upload Product</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Product Detail Modal */}
+      {showProductDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold text-gray-900">Product Details</h2>
+                <button onClick={() => setShowProductDetail(null)} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Product Image */}
+                <div className="w-full h-64 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
+                  {showProductDetail.image_url ? (
+                    <img src={showProductDetail.image_url} alt={showProductDetail.name} className="max-w-full max-h-64 object-contain" />
+                  ) : (
+                    <Package className="w-24 h-24 text-gray-300" />
+                  )}
+                </div>
+
+                {/* Product Info */}
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-2xl font-bold text-gray-900">{showProductDetail.name}</h3>
+                    {showProductDetail.brand && (
+                      <p className="text-gray-500">Brand: {showProductDetail.brand}</p>
+                    )}
+                  </div>
+
+                  <p className="text-3xl font-bold text-primary">₱{parseFloat(showProductDetail.price).toLocaleString()}</p>
+
+                  {/* Quantity Control */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Quantity in Stock</label>
+                    <div className="flex items-center space-x-3">
+                      <button
+                        onClick={() => handleQuantityChange(showProductDetail.id, Math.max(0, showProductDetail.quantity - 1))}
+                        className="w-10 h-10 flex items-center justify-center bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors text-xl font-bold"
+                      >
+                        -
+                      </button>
+                      <span className="w-16 text-center text-xl font-semibold">{showProductDetail.quantity}</span>
+                      <button
+                        onClick={() => handleQuantityChange(showProductDetail.id, showProductDetail.quantity + 1)}
+                        className="w-10 h-10 flex items-center justify-center bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors text-xl font-bold"
+                      >
+                        +
+                      </button>
+                    </div>
+                    {/* Stock Status Indicator */}
+                    {showProductDetail.original_quantity > 0 && (
+                      <div className="mt-3">
+                        <div className="flex items-center justify-between text-sm mb-1">
+                          <span className="text-gray-500">Stock Level</span>
+                          <span className={`font-medium ${
+                            getStockStatus(showProductDetail.quantity, showProductDetail.original_quantity) === 'out' ? 'text-red-600' :
+                            getStockStatus(showProductDetail.quantity, showProductDetail.original_quantity) === 'low' ? 'text-amber-600' :
+                            'text-green-600'
+                          }`}>
+                            {Math.round((showProductDetail.quantity / showProductDetail.original_quantity) * 100)}% 
+                            ({getStockStatus(showProductDetail.quantity, showProductDetail.original_quantity) === 'out' ? 'Out of Stock' :
+                              getStockStatus(showProductDetail.quantity, showProductDetail.original_quantity) === 'low' ? 'Low Stock' : 'In Stock'})
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className={`h-2 rounded-full transition-all ${
+                              getStockStatus(showProductDetail.quantity, showProductDetail.original_quantity) === 'out' ? 'bg-red-500' :
+                              getStockStatus(showProductDetail.quantity, showProductDetail.original_quantity) === 'low' ? 'bg-amber-500' :
+                              'bg-green-500'
+                            }`}
+                            style={{ width: `${Math.min(100, (showProductDetail.quantity / showProductDetail.original_quantity) * 100)}%` }}
+                          />
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1">Original: {showProductDetail.original_quantity} units</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Ratings */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Ratings</label>
+                    <div className="flex items-center space-x-1">
+                      {[1, 2, 3, 4, 5].map(star => (
+                        <span key={star} className={`text-2xl ${star <= (showProductDetail.ratings || 0) ? 'text-amber-400' : 'text-gray-300'}`}>
+                          ★
+                        </span>
+                      ))}
+                      <span className="text-sm text-gray-500 ml-2">
+                        ({showProductDetail.ratings_count || 0} reviews)
+                      </span>
+                    </div>
+                  </div>
+
+                  {showProductDetail.description && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                      <p className="text-gray-600">{showProductDetail.description}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Warning */}
+              <div className="mt-6 bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start space-x-3">
+                <AlertTriangle className="w-6 h-6 text-amber-600 flex-shrink-0" />
+                <div>
+                  <p className="font-medium text-amber-800">Product is for Pickup Only</p>
+                  <p className="text-sm text-amber-700">Customers must collect their orders from your shop location.</p>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="mt-6 flex space-x-3">
+                <button
+                  onClick={() => handleDeleteProduct(showProductDetail.id)}
+                  className="px-4 py-3 border border-red-300 text-red-600 rounded-lg font-medium hover:bg-red-50 transition-colors flex items-center space-x-2"
+                >
+                  <X className="w-5 h-5" />
+                  <span>Delete Product</span>
+                </button>
+                <button
+                  onClick={() => setShowProductDetail(null)}
+                  className="flex-1 px-4 py-3 bg-primary text-white rounded-lg font-semibold hover:bg-primary-dark transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Analytics View Component - Sales focused
+const AnalyticsView = ({ dashboardData, selectedShopId }) => {
+  const salesChartRef = useRef(null)
+  const [salesPeriod, setSalesPeriod] = useState('30')
+  const [allSales, setAllSales] = useState([])
+  const [totalSales, setTotalSales] = useState(0)
+  const [totalOrders, setTotalOrders] = useState(0)
+  const [salesData, setSalesData] = useState({ labels: [], data: [] })
+
+  // Fetch all sales data
+  useEffect(() => {
+    const fetchAllSales = async () => {
+      if (!selectedShopId) return
+
+      try {
+        // Get date range
+        const endDate = new Date()
+        const startDate = new Date()
+        startDate.setDate(startDate.getDate() - parseInt(salesPeriod))
+
+        const { data: sales, error } = await supabase
+          .from('sales')
+          .select('*')
+          .eq('shop_id', selectedShopId)
+          .gte('created_at', startDate.toISOString())
+          .order('created_at', { ascending: false })
+
+        if (error) throw error
+
+        setAllSales(sales || [])
+        
+        // Calculate totals
+        const total = (sales || []).reduce((sum, s) => sum + parseFloat(s.amount), 0)
+        setTotalSales(total)
+        setTotalOrders(sales?.length || 0)
+
+        // Group by date for chart
+        const salesByDate = {}
+        for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+          const dateKey = d.toISOString().split('T')[0]
+          salesByDate[dateKey] = 0
+        }
+
+        (sales || []).forEach(sale => {
+          const dateKey = new Date(sale.created_at).toISOString().split('T')[0]
+          salesByDate[dateKey] = (salesByDate[dateKey] || 0) + parseFloat(sale.amount)
+        })
+
+        const labels = []
+        const data = []
+        Object.keys(salesByDate).sort().forEach(date => {
+          const d = new Date(date)
+          labels.push(d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))
+          data.push(salesByDate[date])
+        })
+
+        setSalesData({ labels, data })
+      } catch (err) {
+        console.error('Error fetching sales:', err)
+      }
+    }
+
+    fetchAllSales()
+  }, [selectedShopId, salesPeriod])
+
+  // Chart
+  useEffect(() => {
+    if (!salesChartRef.current || salesData.labels.length === 0) return
+
+    const ctx = salesChartRef.current.getContext('2d')
+    const gradient = ctx.createLinearGradient(0, 0, 0, 300)
+    gradient.addColorStop(0, 'rgba(30, 58, 138, 0.3)')
+    gradient.addColorStop(1, 'rgba(30, 58, 138, 0)')
+
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: salesData.labels,
+        datasets: [{
+          label: 'Sales',
+          data: salesData.data,
+          backgroundColor: gradient,
+          borderColor: '#1e3a8a',
+          borderWidth: 3,
+          tension: 0.4,
+          fill: true,
+          pointBackgroundColor: '#fff',
+          pointBorderColor: '#1e3a8a',
+          pointBorderWidth: 2,
+          pointRadius: 4,
+          pointHoverRadius: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { beginAtZero: true, grid: { color: '#f0f0f0' } },
+          x: { grid: { display: false } }
+        }
+      }
+    })
+
+    return () => chart.destroy()
+  }, [salesData])
+
+  return (
+    <div className="space-y-6">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-2">
+            <DollarSign className="w-5 h-5 text-green-500" />
+            <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full">Last {salesPeriod} days</span>
+          </div>
+          <p className="text-sm text-gray-600 mb-1">Total Sales</p>
+          <p className="text-2xl font-bold text-gray-900">₱{totalSales.toLocaleString()}</p>
+        </div>
+        <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-2">
+            <ShoppingBag className="w-5 h-5 text-blue-500" />
+          </div>
+          <p className="text-sm text-gray-600 mb-1">Total Orders</p>
+          <p className="text-2xl font-bold text-gray-900">{totalOrders}</p>
+          <p className="text-xs text-gray-500 mt-1">Products Sold</p>
+        </div>
+        <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-2">
+            <TrendingUp className="w-5 h-5 text-purple-500" />
+          </div>
+          <p className="text-sm text-gray-600 mb-1">Average Order</p>
+          <p className="text-2xl font-bold text-gray-900">₱{totalOrders > 0 ? Math.round(totalSales / totalOrders).toLocaleString() : 0}</p>
+          <p className="text-xs text-gray-500 mt-1">Per Transaction</p>
+        </div>
+      </div>
+
+      {/* Sales Chart */}
+      <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">Sales Trend</h2>
+          <select
+            value={salesPeriod}
+            onChange={(e) => setSalesPeriod(e.target.value)}
+            className="px-3 py-1 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white"
+          >
+            <option value="7">Last 7 days</option>
+            <option value="30">Last 30 days</option>
+            <option value="90">Last 90 days</option>
+          </select>
+        </div>
+        <div className="h-64">
+          {salesData.labels.length > 0 ? (
+            <canvas ref={salesChartRef}></canvas>
+          ) : (
+            <div className="flex items-center justify-center h-full text-gray-500">
+              <div className="text-center">
+                <BarChart3 className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                <p>No sales data yet</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Recent Sales Table */}
+      <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Sales History</h2>
+        {allSales.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            <ShoppingBag className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+            <p>No sales recorded yet</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Customer</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Product</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">Qty</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">Amount</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">Date</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {allSales.slice(0, 20).map(sale => (
+                  <tr key={sale.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm text-gray-900">{sale.customer_name || 'Customer'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{sale.product_name}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600 text-center">{sale.quantity}</td>
+                    <td className="px-4 py-3 text-sm font-semibold text-primary text-right">₱{parseFloat(sale.amount).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500 text-right">{new Date(sale.created_at).toLocaleDateString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
@@ -857,342 +2214,32 @@ const ProductsView = ({ dashboardData, setDashboardData }) => {
   )
 }
 
-// Analytics View Component (combines Profit and Reports)
-const AnalyticsView = ({ dashboardData }) => {
-  const revenueChartRef = useRef(null)
-  const salesChannelChartRef = useRef(null)
-  const profitTrendChartRef = useRef(null)
-  const profitMarginChartRef = useRef(null)
-  const [dateRange, setDateRange] = useState('30')
-  const [profitPeriod, setProfitPeriod] = useState('7')
-
-  useEffect(() => {
-    if (!revenueChartRef.current) return
-
-    const ctx = revenueChartRef.current.getContext('2d')
-    // TODO: Fetch revenue breakdown data from API
-    const chart = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: [], // TODO: Fetch from API
-        datasets: [{
-          label: 'Revenue',
-          data: [], // TODO: Fetch from API
-          backgroundColor: ['#1e3a8a', '#f59e0b']
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: { y: { beginAtZero: true } }
-      }
-    })
-
-    return () => chart.destroy()
-  }, [])
-
-  useEffect(() => {
-    if (!salesChannelChartRef.current) return
-
-    const ctx = salesChannelChartRef.current.getContext('2d')
-    // TODO: Fetch sales channel data from API
-    const chart = new Chart(ctx, {
-      type: 'doughnut',
-      data: {
-        labels: [], // TODO: Fetch from API
-        datasets: [{
-          data: [], // TODO: Fetch from API
-          backgroundColor: ['#10b981', '#3b82f6']
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { position: 'right' } }
-      }
-    })
-
-    return () => chart.destroy()
-  }, [])
-
-  useEffect(() => {
-    if (!profitTrendChartRef.current) return
-
-    const ctx = profitTrendChartRef.current.getContext('2d')
-    const chartData = dashboardData.salesHistory[profitPeriod] || dashboardData.salesHistory[7]
-    const profitData = chartData.data.map(sales => sales * 0.35) // 35% profit margin
-
-    const chart = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: chartData.labels,
-        datasets: [{
-          label: 'Profit',
-          data: profitData,
-          borderColor: '#10b981',
-          backgroundColor: 'rgba(16, 185, 129, 0.1)',
-          fill: true,
-          tension: 0.4
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: { y: { beginAtZero: true } }
-      }
-    })
-
-    return () => chart.destroy()
-  }, [profitPeriod, dashboardData.salesHistory])
-
-  useEffect(() => {
-    if (!profitMarginChartRef.current) return
-
-    const ctx = profitMarginChartRef.current.getContext('2d')
-    const margin = dashboardData.settings.profitMargin || 35
-
-    const chart = new Chart(ctx, {
-      type: 'doughnut',
-      data: {
-        labels: ['Profit', 'Cost'],
-        datasets: [{
-          data: [margin, 100 - margin],
-          backgroundColor: ['#10b981', '#e5e7eb'],
-          borderWidth: 0
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: { enabled: false }
-        },
-        cutout: '75%'
-      }
-    })
-
-    // Add center text
-    const centerX = chart.chartArea.left + (chart.chartArea.right - chart.chartArea.left) / 2
-    const centerY = chart.chartArea.top + (chart.chartArea.bottom - chart.chartArea.top) / 2
-    ctx.save()
-    ctx.font = 'bold 24px sans-serif'
-    ctx.fillStyle = '#10b981'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(`${margin}%`, centerX, centerY)
-    ctx.restore()
-
-    return () => chart.destroy()
-  }, [dashboardData.settings.profitMargin])
-
-  return (
-    <div className="space-y-6">
-      {/* Summary Cards - TODO: Fetch from API */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-2">
-            <DollarSign className="w-5 h-5 text-green-500" />
-            <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full">+0%</span>
-          </div>
-          <p className="text-sm text-gray-600 mb-1">Total Revenue</p>
-          <p className="text-2xl font-bold text-gray-900">₱0</p>
-        </div>
-        <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-2">
-            <TrendingUp className="w-5 h-5 text-blue-500" />
-          </div>
-          <p className="text-sm text-gray-600 mb-1">Net Profit</p>
-          <p className="text-2xl font-bold text-gray-900">₱0</p>
-          <p className="text-xs text-gray-500 mt-1">Revenue - COGS</p>
-        </div>
-        <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-2">
-            <Wrench className="w-5 h-5 text-purple-500" />
-          </div>
-          <p className="text-sm text-gray-600 mb-1">Service Efficiency</p>
-          <p className="text-2xl font-bold text-gray-900">0</p>
-          <p className="text-xs text-gray-500 mt-1">Bikes/Cars Serviced</p>
-        </div>
-        <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-2">
-            <ShoppingBag className="w-5 h-5 text-amber-500" />
-          </div>
-          <p className="text-sm text-gray-600 mb-1">Online vs Instore</p>
-          <p className="text-2xl font-bold text-gray-900">0%</p>
-          <p className="text-xs text-gray-500 mt-1">Online Orders</p>
-        </div>
-      </div>
-
-      {/* Profit Section */}
-      <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Profit Analysis</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-medium text-gray-900">Profit Trend</h3>
-              <select
-                value={profitPeriod}
-                onChange={(e) => setProfitPeriod(e.target.value)}
-                className="px-3 py-1 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white"
-              >
-                <option value="7">7 days</option>
-                <option value="30">30 days</option>
-              </select>
-            </div>
-            <div className="h-64">
-              <canvas ref={profitTrendChartRef}></canvas>
-            </div>
-          </div>
-          <div>
-            <h3 className="font-medium text-gray-900 mb-4">Profit Margin</h3>
-            <div className="h-64 flex items-center justify-center">
-              <canvas ref={profitMarginChartRef}></canvas>
-            </div>
-            <p className="text-center text-sm text-gray-600 mt-2">Current Margin</p>
-          </div>
-        </div>
-        {/* TODO: Fetch profit analysis data from API */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <p className="text-sm text-gray-600 mb-1">Revenue</p>
-            <p className="text-xl font-bold text-gray-900">₱0</p>
-            <p className="text-xs text-green-600 mt-1">+0%</p>
-          </div>
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <p className="text-sm text-gray-600 mb-1">Expenses</p>
-            <p className="text-xl font-bold text-gray-900">₱0</p>
-            <p className="text-xs text-red-600 mt-1">-0%</p>
-          </div>
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <p className="text-sm text-gray-600 mb-1">Margin</p>
-            <p className="text-xl font-bold text-gray-900">0%</p>
-            <p className="text-xs text-green-600 mt-1">+0%</p>
-          </div>
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <p className="text-sm text-gray-600 mb-1">Goal</p>
-            <p className="text-xl font-bold text-gray-900">0%</p>
-            <p className="text-xs text-green-600 mt-1">+0%</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Revenue Breakdown</h3>
-          <p className="text-sm text-gray-600 mb-4">Parts Sales vs Labor/Service Fees</p>
-          <div className="h-64">
-            <canvas ref={revenueChartRef}></canvas>
-          </div>
-        </div>
-        <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Sales Channel</h3>
-          <p className="text-sm text-gray-600 mb-4">Online Orders vs Walk-in Customers</p>
-          <div className="h-64">
-            <canvas ref={salesChannelChartRef}></canvas>
-          </div>
-        </div>
-      </div>
-
-      {/* Tables Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Top Moving Parts</h3>
-          <p className="text-sm text-gray-600 mb-4">Best selling parts for restocking decisions</p>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rank</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Part Name</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity Sold</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Revenue</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {[
-                  { rank: 1, name: 'Motul Oil 10W-40', quantity: 125, revenue: 18750 },
-                  { rank: 2, name: 'Michelin Road 5 Tire', quantity: 48, revenue: 19200 },
-                  { rank: 3, name: 'Brake Pad Set Front', quantity: 62, revenue: 12400 },
-                  { rank: 4, name: 'Chain & Sprocket Kit', quantity: 35, revenue: 10500 },
-                ].map(item => (
-                  <tr key={item.rank}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.rank}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.quantity} units</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">₱{item.revenue.toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Top Services</h3>
-          <p className="text-sm text-gray-600 mb-4">Most requested services</p>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rank</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Service Name</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Count</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Revenue</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {[
-                  { rank: 1, name: 'Oil Change', count: 45, revenue: 38250 },
-                  { rank: 2, name: 'Brake Adjustment', count: 32, revenue: 27200 },
-                  { rank: 3, name: 'Tire Replacement', count: 28, revenue: 23800 },
-                  { rank: 4, name: 'Chain Maintenance', count: 18, revenue: 15300 },
-                ].map(item => (
-                  <tr key={item.rank}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.rank}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.count} times</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">₱{item.revenue.toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // Profile View Component (Shop Profile Settings)
-const ProfileView = ({ selectedShopId, ownedShops, setSelectedShopId }) => {
+const ProfileView = ({ selectedShopId, ownedShops, setSelectedShopId, loadingShops, onRefresh }) => {
   const [shopData, setShopData] = useState(null)
   const [shopImage, setShopImage] = useState(null)
   const [shopImagePreview, setShopImagePreview] = useState(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [error, setError] = useState('')
 
   useEffect(() => {
-    if (selectedShopId) {
+    if (selectedShopId && ownedShops.length > 0) {
       const shop = ownedShops.find(s => s.id === selectedShopId)
       if (shop) {
-        // Load shop data from localStorage - TODO: Fetch from API
-        const savedShopData = localStorage.getItem(`shop_${selectedShopId}_data`)
-        if (savedShopData) {
-          const parsed = JSON.parse(savedShopData)
-          setShopData({ ...shop, ...parsed })
-          if (parsed.image) setShopImagePreview(parsed.image)
-        } else {
-          setShopData(shop)
-          setShopImagePreview(shop.image)
-        }
+        setShopData(shop)
+        setShopImagePreview(shop.image || null)
       }
+    } else if (ownedShops.length > 0 && !selectedShopId) {
+      // Auto-select first shop
+      const firstShop = ownedShops[0]
+      setSelectedShopId(firstShop.id)
+      setShopData(firstShop)
+      setShopImagePreview(firstShop.image || null)
     }
-  }, [selectedShopId, ownedShops])
+  }, [selectedShopId, ownedShops, setSelectedShopId])
 
-  const handleImageChange = (e) => {
+  const handleImageChange = async (e) => {
     const file = e.target.files[0]
     if (file) {
       setShopImage(file)
@@ -1208,31 +2255,88 @@ const ProfileView = ({ selectedShopId, ownedShops, setSelectedShopId }) => {
     setShopData(prev => ({ ...prev, [field]: value }))
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (!selectedShopId || !shopData) return
+    
     setSaving(true)
+    setError('')
     
-    // Save to localStorage
-    const dataToSave = {
-      ...shopData,
-      image: shopImagePreview, // Save the preview URL or base64
-      updatedAt: new Date().toISOString()
+    try {
+      let imageUrl = shopData.image
+
+      // Upload new image if changed
+      if (shopImage) {
+        const fileExt = shopImage.name.split('.').pop()
+        const fileName = `shop_${selectedShopId}_${Date.now()}.${fileExt}`
+        
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('shop-images')
+          .upload(fileName, shopImage)
+
+        if (uploadError) {
+          console.error('Image upload error:', uploadError)
+          // Continue without updating image
+        } else {
+          const { data: { publicUrl } } = supabase.storage
+            .from('shop-images')
+            .getPublicUrl(fileName)
+          imageUrl = publicUrl
+        }
+      }
+
+      // Update shop in database
+      const { error: updateError } = await supabase
+        .from('shops')
+        .update({
+          name: shopData.name,
+          description: shopData.description,
+          address: shopData.address,
+          phone: shopData.phone,
+          email: shopData.email,
+          hours: shopData.hours,
+          services: shopData.services,
+          owner_name: shopData.ownerName,
+          image_url: imageUrl,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', selectedShopId)
+
+      if (updateError) throw updateError
+
+      setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
+      
+      // Refresh shop data
+      if (onRefresh) onRefresh()
+      
+    } catch (err) {
+      console.error('Save error:', err)
+      setError(err.message || 'Failed to save changes')
+    } finally {
+      setSaving(false)
     }
-    
-    localStorage.setItem(`shop_${selectedShopId}_data`, JSON.stringify(dataToSave))
-    
-    // TODO: Send to backend API
-    
-    setSaving(false)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 3000)
   }
 
-  if (!shopData) {
+  // Loading state
+  if (loadingShops) {
+    return (
+      <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
+        <div className="text-center py-12 text-gray-500">
+          <Loader2 className="w-12 h-12 mx-auto mb-4 text-primary animate-spin" />
+          <p>Loading shop data...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // No shop found
+  if (!shopData || ownedShops.length === 0) {
     return (
       <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
         <div className="text-center py-12 text-gray-500">
           <Store className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-          <p>No shop selected</p>
+          <p className="text-lg font-medium mb-2">No shop found</p>
+          <p className="text-sm text-gray-400">Your shop verification is pending approval or you haven't submitted one yet.</p>
         </div>
       </div>
     )
@@ -1240,6 +2344,63 @@ const ProfileView = ({ selectedShopId, ownedShops, setSelectedShopId }) => {
 
   return (
     <div className="space-y-6">
+      {/* Shop Name Header */}
+      <div className="bg-gradient-to-r from-primary to-primary-dark rounded-xl p-6 text-white">
+        <div className="flex items-center space-x-4">
+          {shopImagePreview ? (
+            <img src={shopImagePreview} alt={shopData.name} className="w-20 h-20 rounded-lg object-cover border-2 border-white/30" />
+          ) : (
+            <div className="w-20 h-20 rounded-lg bg-white/20 flex items-center justify-center">
+              <Store className="w-10 h-10 text-white/80" />
+            </div>
+          )}
+          <div>
+            <h2 className="text-3xl font-bold">{shopData.name || 'My Shop'}</h2>
+            <p className="text-white/80 mt-1">Owned by {shopData.ownerName || 'Store Owner'}</p>
+            <div className="flex items-center space-x-2 mt-2">
+              {shopData.status === 'verified' ? (
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-500 text-white">
+                  <CheckCircle className="w-4 h-4 mr-1" /> Verified
+                </span>
+              ) : (
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-amber-500 text-white">
+                  <Clock className="w-4 h-4 mr-1" /> Pending Verification
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Verification Status Banner */}
+      {shopData.status === 'pending' && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-center space-x-3">
+          <Clock className="w-5 h-5 text-amber-600 flex-shrink-0" />
+          <div>
+            <p className="font-medium text-amber-800">Verification Pending</p>
+            <p className="text-sm text-amber-600">Your shop is awaiting admin approval. Some features may be limited.</p>
+          </div>
+        </div>
+      )}
+      
+      {shopData.status === 'verified' && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-center space-x-3">
+          <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+          <div>
+            <p className="font-medium text-green-800">Shop Verified</p>
+            <p className="text-sm text-green-600">Your shop is verified and visible to customers.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Error Message */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center space-x-3">
+          <XCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+          <p className="text-red-700">{error}</p>
+        </div>
+      )}
+
       {/* Shop Selection */}
       {ownedShops.length > 1 && (
         <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
@@ -1247,8 +2408,8 @@ const ProfileView = ({ selectedShopId, ownedShops, setSelectedShopId }) => {
             Select Shop to Edit
           </label>
           <select
-            value={selectedShopId}
-            onChange={(e) => setSelectedShopId(parseInt(e.target.value))}
+            value={selectedShopId || ''}
+            onChange={(e) => setSelectedShopId(e.target.value)}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-gray-900 bg-white"
           >
             {ownedShops.map(shop => (
@@ -1263,12 +2424,13 @@ const ProfileView = ({ selectedShopId, ownedShops, setSelectedShopId }) => {
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Personal Profile</h2>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Full Name (Owner)</label>
             <input
               type="text"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-gray-900 bg-white"
               placeholder="Enter your full name"
-              defaultValue={shopData.ownerName || ''}
+              value={shopData.ownerName || ''}
+              onChange={(e) => handleInputChange('ownerName', e.target.value)}
             />
           </div>
           <div>
@@ -1276,7 +2438,7 @@ const ProfileView = ({ selectedShopId, ownedShops, setSelectedShopId }) => {
             <input
               type="email"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
-              value={shopData.ownerEmail || ''}
+              value={shopData.ownerEmail || shopData.email || ''}
               readOnly
             />
             <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
@@ -1296,11 +2458,11 @@ const ProfileView = ({ selectedShopId, ownedShops, setSelectedShopId }) => {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Shop Front Image</label>
             <div className="relative">
-              <div className="w-full h-48 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center overflow-hidden bg-gray-50">
+              <div className="w-full min-h-48 max-h-96 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center overflow-hidden bg-gray-50">
                 {shopImagePreview ? (
-                  <img src={shopImagePreview} alt="Shop preview" className="w-full h-full object-cover" />
+                  <img src={shopImagePreview} alt="Shop preview" className="max-w-full max-h-96 object-contain" />
                 ) : (
-                  <div className="text-center text-gray-400">
+                  <div className="text-center text-gray-400 py-12">
                     <Store className="w-12 h-12 mx-auto mb-2" />
                     <p className="text-sm">Upload Shop Front Image</p>
                   </div>

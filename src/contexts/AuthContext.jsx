@@ -182,7 +182,7 @@ export const AuthProvider = ({ children }) => {
           localStorage.setItem('motoZapp_admin', JSON.stringify(adminUser))
           return { success: true, user: adminUser }
         } else {
-          return { success: false, error: 'Invalid admin credentials' }
+          return { success: false, error: 'Invalid admin credentials. Only authorized administrators can access this portal.' }
         }
       }
 
@@ -190,16 +190,59 @@ export const AuthProvider = ({ children }) => {
       const result = await authService.signIn(email, password)
       
       if (result.success && result.user) {
-        // Try to load profile, but don't fail login if profile doesn't exist
+        // Load profile to check the registered role
         try {
           const profileResult = await profileService.getProfile(result.user.id)
           if (profileResult.success && profileResult.data) {
+            const userRegisteredRole = profileResult.data.role
+            
+            // ROLE VALIDATION: Check if user is trying to login with the correct role
+            if (userRegisteredRole && userRegisteredRole !== role) {
+              // Sign out since role doesn't match
+              await authService.signOut()
+              
+              // Provide helpful error message based on their registered role
+              const roleDisplayNames = {
+                'customer': 'Rider',
+                'store_owner': 'Shop Owner',
+                'admin': 'Administrator'
+              }
+              const registeredRoleName = roleDisplayNames[userRegisteredRole] || userRegisteredRole
+              const selectedRoleName = roleDisplayNames[role] || role
+              
+              return { 
+                success: false, 
+                error: `This account is registered as "${registeredRoleName}". Please sign in using the "${registeredRoleName}" option instead of "${selectedRoleName}".`
+              }
+            }
+            
+            // Role matches, proceed with login
             const transformedUser = transformProfileToUser(result.user, profileResult.data)
             setUser(transformedUser)
             return { success: true, user: transformedUser }
           }
         } catch (profileError) {
           console.warn('Profile load failed, continuing with basic user:', profileError)
+        }
+        
+        // If profile doesn't exist, check user metadata for role
+        const userMetadataRole = result.user.user_metadata?.role
+        
+        // Validate role from metadata if available
+        if (userMetadataRole && userMetadataRole !== role) {
+          await authService.signOut()
+          const roleDisplayNames = {
+            'customer': 'Rider',
+            'store_owner': 'Shop Owner',
+            'admin': 'Administrator'
+          }
+          const registeredRoleName = roleDisplayNames[userMetadataRole] || userMetadataRole
+          const selectedRoleName = roleDisplayNames[role] || role
+          
+          return { 
+            success: false, 
+            error: `This account is registered as "${registeredRoleName}". Please sign in using the "${registeredRoleName}" option instead of "${selectedRoleName}".`
+          }
         }
         
         // If profile doesn't exist or failed to load, create basic user
@@ -230,6 +273,18 @@ export const AuthProvider = ({ children }) => {
       const result = await authService.signUp(email, password, name, role)
       
       if (result.success && result.user) {
+        // Check if email confirmation is required
+        if (result.needsEmailConfirmation) {
+          // Account created but needs email confirmation
+          // We'll still return success but flag it
+          return { 
+            success: true, 
+            user: result.user, 
+            needsEmailConfirmation: true,
+            message: 'Account created! Please check your email to confirm your account, or ask admin to confirm it in Supabase Dashboard.'
+          }
+        }
+        
         // Profile is created via trigger, but we need to wait for it
         // Retry a few times to get the profile (trigger might take a moment)
         let profileResult = null

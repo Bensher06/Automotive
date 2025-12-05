@@ -12,15 +12,17 @@ import {
   Package,
   Navigation,
   CheckCircle,
+  Loader2,
+  X,
+  ShoppingCart,
+  AlertTriangle,
+  Mail,
 } from 'lucide-react'
-// TODO: Fetch from API
-const shops = []
-const products = []
-const serviceTypes = ['Tune-up', 'Engine Repair', 'Brake Service', 'Tire Change', 'Electrical Repair', 'General Maintenance', 'Oil Change', 'Chain Adjustment']
+import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useNotifications } from '../contexts/NotificationContext'
 import { useBookings } from '../contexts/BookingContext'
-import ProductCard from '../components/ProductCard'
+import { useCart } from '../contexts/CartContext'
 
 const ShopDetails = () => {
   const { id } = useParams()
@@ -28,11 +30,24 @@ const ShopDetails = () => {
   const { user } = useAuth()
   const { addNotification } = useNotifications()
   const { createBooking } = useBookings()
+  const { addToCart } = useCart()
+  
   const [activeTab, setActiveTab] = useState('overview')
   const [shop, setShop] = useState(null)
   const [shopProducts, setShopProducts] = useState([])
+  const [loading, setLoading] = useState(true)
   const [submitted, setSubmitted] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [bookingLoading, setBookingLoading] = useState(false)
+  
+  // Rating state
+  const [userRating, setUserRating] = useState(0)
+  const [hoverRating, setHoverRating] = useState(0)
+  const [showRatingModal, setShowRatingModal] = useState(false)
+  const [submittingRating, setSubmittingRating] = useState(false)
+  const [existingRating, setExistingRating] = useState(null)
+
+  // Product detail state
+  const [selectedProduct, setSelectedProduct] = useState(null)
 
   // Booking form state
   const [serviceType, setServiceType] = useState('')
@@ -42,30 +57,144 @@ const ShopDetails = () => {
 
   const today = new Date().toISOString().split('T')[0]
 
+  // Fetch shop data
   useEffect(() => {
-    // TODO: Fetch shop from API
-    // const foundShop = shops.find((s) => s.id === parseInt(id))
-    // if (foundShop) {
-    //   setShop(foundShop)
-    //   const shopProds = products.filter((p) => p.shopId === foundShop.id)
-    //   setShopProducts(shopProds)
-    // }
-  }, [id])
+    const fetchShopData = async () => {
+      setLoading(true)
+      try {
+        // Fetch shop details
+        const { data: shopData, error: shopError } = await supabase
+          .from('shops')
+          .select('*')
+          .eq('id', id)
+          .single()
 
-  if (!shop) {
+        if (shopError) throw shopError
+        setShop(shopData)
+
+        // Fetch shop products
+        const { data: productsData, error: productsError } = await supabase
+          .from('products')
+          .select('*')
+          .eq('shop_id', id)
+          .eq('status', 'active')
+          .order('created_at', { ascending: false })
+
+        if (!productsError) {
+          setShopProducts(productsData || [])
+        }
+
+        // Fetch user's existing rating
+        if (user?.id) {
+          const { data: ratingData } = await supabase
+            .from('shop_ratings')
+            .select('rating')
+            .eq('shop_id', id)
+            .eq('user_id', user.id)
+            .single()
+
+          if (ratingData) {
+            setExistingRating(ratingData.rating)
+            setUserRating(ratingData.rating)
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching shop:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    if (id) {
+      fetchShopData()
+    }
+  }, [id, user?.id])
+
+  // Submit rating
+  const submitRating = async () => {
+    if (!user) {
+      alert('Please login to rate this shop')
+      navigate('/login')
+      return
+    }
+    if (userRating === 0) return
+
+    setSubmittingRating(true)
+    try {
+      const { error } = await supabase
+        .from('shop_ratings')
+        .upsert({
+          shop_id: id,
+          user_id: user.id,
+          rating: userRating,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'shop_id,user_id'
+        })
+
+      if (error) throw error
+
+      // Refresh shop data to get updated rating
+      const { data: updatedShop } = await supabase
+        .from('shops')
+        .select('*')
+        .eq('id', id)
+        .single()
+
+      if (updatedShop) setShop(updatedShop)
+      
+      setExistingRating(userRating)
+      setShowRatingModal(false)
+    } catch (err) {
+      console.error('Error submitting rating:', err)
+      alert('Failed to submit rating')
+    } finally {
+      setSubmittingRating(false)
+    }
+  }
+
+  // Render stars
+  const renderStars = (rating, size = 'w-5 h-5', interactive = false) => {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-gray-600 mb-4">Shop not found</p>
+      <div className="flex items-center space-x-1">
+        {[1, 2, 3, 4, 5].map(star => (
           <button
-            onClick={() => navigate('/marketplace')}
-            className="text-primary hover:underline"
+            key={star}
+            type="button"
+            disabled={!interactive}
+            onClick={() => interactive && setUserRating(star)}
+            onMouseEnter={() => interactive && setHoverRating(star)}
+            onMouseLeave={() => interactive && setHoverRating(0)}
+            className={`${interactive ? 'cursor-pointer hover:scale-110 transition-transform' : 'cursor-default'}`}
           >
-            Back to Marketplace
+            <Star
+              className={`${size} ${
+                star <= (interactive ? (hoverRating || userRating) : rating)
+                  ? 'text-amber-400 fill-amber-400'
+                  : 'text-gray-300'
+              }`}
+            />
           </button>
-        </div>
+        ))}
       </div>
     )
+  }
+
+  // Handle add to cart
+  const handleAddToCart = (product) => {
+    addToCart({
+      id: product.id,
+      name: product.name,
+      price: product.price,
+      image: product.image_url,
+      shopId: shop.id,
+      shopName: shop.name,
+      quantity: 1
+    })
+    addNotification({
+      type: 'cart',
+      message: `${product.name} added to cart`
+    })
   }
 
   const handleBookService = (e) => {
@@ -75,13 +204,12 @@ const ShopDetails = () => {
       return
     }
 
-    setLoading(true)
+    setBookingLoading(true)
 
-    // Create booking using BookingContext
     createBooking({
       shopId: shop.id,
       shopName: shop.name,
-      shopOwnerId: shop.ownerId,
+      shopOwnerId: shop.owner_id,
       customerId: user.id,
       customerName: user.name,
       customerPhone: user.phone || 'N/A',
@@ -92,11 +220,11 @@ const ShopDetails = () => {
       vehicle: user.vehicle,
     })
 
-    setLoading(false)
+    setBookingLoading(false)
     setSubmitted(true)
     addNotification({
       type: 'service',
-      message: `Your booking request for ${serviceType} at ${shop.name} on ${date} at ${time} has been submitted. Waiting for shop approval.`,
+      message: `Your booking request for ${serviceType} at ${shop.name} on ${date} at ${time} has been submitted.`,
     })
     setTimeout(() => {
       setServiceType('')
@@ -107,13 +235,39 @@ const ShopDetails = () => {
     }, 3000)
   }
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Loader2 className="w-12 h-12 text-primary animate-spin" />
+      </div>
+    )
+  }
+
+  if (!shop) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Store className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+          <p className="text-gray-600 mb-4">Shop not found</p>
+          <button
+            onClick={() => navigate('/')}
+            className="text-primary hover:underline"
+          >
+            Back to Home
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   const tabs = [
     { id: 'overview', label: 'Overview', icon: Store },
-    { id: 'about', label: 'About', icon: Package },
+    { id: 'products', label: `Products (${shopProducts.length})`, icon: Package },
     { id: 'booking', label: 'Book Service', icon: Calendar },
-    { id: 'products', label: 'Products', icon: Package },
     { id: 'location', label: 'Location', icon: MapPin },
   ]
+
+  const serviceTypes = shop.services || ['Tune-up', 'Engine Repair', 'Brake Service', 'Tire Change', 'Oil Change', 'General Maintenance']
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -129,29 +283,62 @@ const ShopDetails = () => {
 
         {/* Shop Header */}
         <div className="bg-white rounded-lg shadow-md overflow-hidden mb-6">
-          <div className="aspect-video bg-gray-200 relative">
-            <img
-              src={shop.image}
-              alt={shop.name}
-              className="w-full h-full object-cover"
-            />
+          <div className="h-64 bg-gray-200 relative">
+            {shop.image_url ? (
+              <img
+                src={shop.image_url}
+                alt={shop.name}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center">
+                <Store className="w-24 h-24 text-gray-300" />
+              </div>
+            )}
+            {/* Verification Badge */}
+            {shop.status === 'verified' && (
+              <div className="absolute top-4 right-4 bg-green-500 text-white px-3 py-1 rounded-full text-sm font-medium flex items-center space-x-1">
+                <CheckCircle className="w-4 h-4" />
+                <span>Verified</span>
+              </div>
+            )}
           </div>
           <div className="p-6">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
-              <div>
+            <div className="flex flex-col md:flex-row md:items-start md:justify-between">
+              <div className="flex-1">
                 <h1 className="text-3xl font-bold text-gray-900 mb-2">
                   {shop.name}
                 </h1>
-                <div className="flex items-center space-x-4">
-                  <div className="flex items-center space-x-1">
-                    <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
-                    <span className="text-lg font-semibold">{shop.rating}</span>
-                    <span className="text-gray-500">({shop.reviews} reviews)</span>
+                <p className="text-gray-600 mb-3">Owned by {shop.owner_name}</p>
+                <div className="flex flex-wrap items-center gap-4 mb-4">
+                  {/* Rating */}
+                  <div className="flex items-center space-x-2">
+                    {renderStars(shop.average_rating || 0, 'w-5 h-5')}
+                    <span className="text-lg font-semibold">{shop.average_rating?.toFixed(1) || '0.0'}</span>
+                    <span className="text-gray-500">({shop.ratings_count || 0} reviews)</span>
                   </div>
-                  <div className="flex items-center space-x-1 text-gray-600">
-                    <MapPin className="w-5 h-5" />
-                    <span>{shop.distance}</span>
-                  </div>
+                  {/* Rate Button */}
+                  <button
+                    onClick={() => setShowRatingModal(true)}
+                    className="text-primary hover:underline text-sm font-medium"
+                  >
+                    {existingRating ? 'Update your rating' : 'Rate this shop'}
+                  </button>
+                </div>
+                {/* Contact Info */}
+                <div className="flex flex-wrap gap-4 text-gray-600">
+                  {shop.address && (
+                    <div className="flex items-center space-x-1">
+                      <MapPin className="w-4 h-4" />
+                      <span className="text-sm">{shop.address}</span>
+                    </div>
+                  )}
+                  {shop.phone && (
+                    <div className="flex items-center space-x-1">
+                      <Phone className="w-4 h-4" />
+                      <span className="text-sm">{shop.phone}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -191,48 +378,54 @@ const ShopDetails = () => {
                   <h2 className="text-2xl font-bold text-gray-900 mb-4">
                     Shop Overview
                   </h2>
+                  {shop.description && (
+                    <p className="text-gray-700 mb-6">{shop.description}</p>
+                  )}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-4">
                       <div className="flex items-start space-x-3">
                         <MapPin className="w-5 h-5 text-primary mt-1" />
                         <div>
                           <p className="font-medium text-gray-900">Address</p>
-                          <p className="text-gray-600">
-                            {shop.address || '123 Main Street, Zamboanga City'}
-                          </p>
+                          <p className="text-gray-600">{shop.address || 'No address provided'}</p>
                         </div>
                       </div>
                       <div className="flex items-start space-x-3">
                         <Phone className="w-5 h-5 text-primary mt-1" />
                         <div>
                           <p className="font-medium text-gray-900">Contact</p>
-                          <p className="text-gray-600">
-                            {shop.phone || '+63 912 345 6789'}
-                          </p>
+                          <p className="text-gray-600">{shop.phone || 'No phone provided'}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start space-x-3">
+                        <Mail className="w-5 h-5 text-primary mt-1" />
+                        <div>
+                          <p className="font-medium text-gray-900">Email</p>
+                          <p className="text-gray-600">{shop.email || 'No email provided'}</p>
                         </div>
                       </div>
                       <div className="flex items-start space-x-3">
                         <Clock className="w-5 h-5 text-primary mt-1" />
                         <div>
                           <p className="font-medium text-gray-900">Business Hours</p>
-                          <p className="text-gray-600">
-                            {shop.hours || 'Mon-Sat: 8:00 AM - 6:00 PM'}
-                          </p>
+                          <p className="text-gray-600">{shop.hours || 'Not specified'}</p>
                         </div>
                       </div>
                     </div>
                     <div>
-                      <p className="font-medium text-gray-900 mb-2">Specialties</p>
+                      <p className="font-medium text-gray-900 mb-3">Services Offered</p>
                       <div className="flex flex-wrap gap-2">
-                        {(shop.specialties || ['Engine Repair', 'Tire Replacement', 'Oil Change', 'Brake Service']).map(
-                          (specialty, idx) => (
+                        {(shop.services || []).length > 0 ? (
+                          shop.services.map((service, idx) => (
                             <span
                               key={idx}
                               className="px-3 py-1 bg-primary/10 text-primary rounded-full text-sm"
                             >
-                              {specialty}
+                              {service}
                             </span>
-                          )
+                          ))
+                        ) : (
+                          <p className="text-gray-500">No services listed</p>
                         )}
                       </div>
                     </div>
@@ -241,50 +434,41 @@ const ShopDetails = () => {
               </div>
             )}
 
-            {/* About Tab */}
-            {activeTab === 'about' && (
+            {/* Products Tab */}
+            {activeTab === 'products' && (
               <div>
                 <h2 className="text-2xl font-bold text-gray-900 mb-4">
-                  About {shop.name}
+                  Available Products
                 </h2>
-                <p className="text-gray-700 leading-relaxed mb-6">
-                  {shop.description ||
-                    `${shop.name} is a trusted automotive shop in Zamboanga City, specializing in motorcycle parts and services. With years of experience, we provide high-quality products and professional service to keep your motorcycle running smoothly. Our team of skilled mechanics is dedicated to ensuring your satisfaction and safety on the road.`}
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <h3 className="font-semibold text-gray-900 mb-2">Services Offered</h3>
-                    <ul className="space-y-2">
-                      {serviceTypes.slice(0, 5).map((service, idx) => (
-                        <li key={idx} className="flex items-center space-x-2 text-gray-600">
-                          <CheckCircle className="w-4 h-4 text-primary" />
-                          <span>{service}</span>
-                        </li>
-                      ))}
-                    </ul>
+                {shopProducts.length > 0 ? (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {shopProducts.map((product) => (
+                      <div
+                        key={product.id}
+                        className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
+                        onClick={() => setSelectedProduct(product)}
+                      >
+                        <div className="w-full h-40 bg-gray-100 flex items-center justify-center overflow-hidden">
+                          {product.image_url ? (
+                            <img src={product.image_url} alt={product.name} className="w-full h-full object-contain" />
+                          ) : (
+                            <Package className="w-12 h-12 text-gray-300" />
+                          )}
+                        </div>
+                        <div className="p-3">
+                          <h3 className="font-medium text-gray-900 truncate">{product.name}</h3>
+                          <p className="text-lg font-bold text-primary">₱{parseFloat(product.price).toLocaleString()}</p>
+                          <p className="text-sm text-gray-500">{product.quantity > 0 ? `${product.quantity} in stock` : 'Out of stock'}</p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-gray-900 mb-2">Why Choose Us</h3>
-                    <ul className="space-y-2">
-                      <li className="flex items-center space-x-2 text-gray-600">
-                        <CheckCircle className="w-4 h-4 text-primary" />
-                        <span>Experienced and certified mechanics</span>
-                      </li>
-                      <li className="flex items-center space-x-2 text-gray-600">
-                        <CheckCircle className="w-4 h-4 text-primary" />
-                        <span>Genuine and quality parts</span>
-                      </li>
-                      <li className="flex items-center space-x-2 text-gray-600">
-                        <CheckCircle className="w-4 h-4 text-primary" />
-                        <span>Competitive pricing</span>
-                      </li>
-                      <li className="flex items-center space-x-2 text-gray-600">
-                        <CheckCircle className="w-4 h-4 text-primary" />
-                        <span>Fast and reliable service</span>
-                      </li>
-                    </ul>
+                ) : (
+                  <div className="text-center py-12 text-gray-500">
+                    <Package className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                    <p>No products available from this shop yet</p>
                   </div>
-                </div>
+                )}
               </div>
             )}
 
@@ -300,10 +484,10 @@ const ShopDetails = () => {
                       <CheckCircle className="w-8 h-8 text-green-600" />
                     </div>
                     <h3 className="text-xl font-bold text-gray-900 mb-2">
-                      Booking Confirmed!
+                      Booking Submitted!
                     </h3>
                     <p className="text-gray-600">
-                      Your service appointment has been scheduled with {shop.name}.
+                      Your service appointment request has been sent to {shop.name}.
                     </p>
                   </div>
                 ) : (
@@ -390,34 +574,13 @@ const ShopDetails = () => {
 
                     <button
                       type="submit"
-                      disabled={loading || !user}
+                      disabled={bookingLoading || !user}
                       className="w-full bg-primary text-white py-3 rounded-lg font-semibold hover:bg-primary-dark transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Calendar className="w-5 h-5" />
-                      <span>{loading ? 'Booking...' : 'Confirm Booking'}</span>
+                      <span>{bookingLoading ? 'Booking...' : 'Confirm Booking'}</span>
                     </button>
                   </form>
-                )}
-              </div>
-            )}
-
-            {/* Products Tab */}
-            {activeTab === 'products' && (
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-4">
-                  Available Products ({shopProducts.length})
-                </h2>
-                {shopProducts.length > 0 ? (
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {shopProducts.map((product) => (
-                      <ProductCard key={product.id} product={product} />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12 text-gray-500">
-                    <Package className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                    <p>No products available from this shop</p>
-                  </div>
                 )}
               </div>
             )}
@@ -432,12 +595,10 @@ const ShopDetails = () => {
                   <div className="bg-gray-100 rounded-lg p-6 text-center">
                     <MapPin className="w-12 h-12 mx-auto mb-3 text-primary" />
                     <p className="font-medium text-gray-900 mb-2">
-                      {shop.address || '123 Main Street, Zamboanga City'}
+                      {shop.address || 'Address not provided'}
                     </p>
-                    <p className="text-gray-600 mb-4">{shop.distance} from you</p>
                     <button
                       onClick={() => {
-                        // In a real app, this would open maps
                         window.open(
                           `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
                             shop.address || 'Zamboanga City'
@@ -451,20 +612,151 @@ const ShopDetails = () => {
                       <span>Open in Maps</span>
                     </button>
                   </div>
-                  {shop.location && (
-                    <div className="bg-gray-200 rounded-lg h-64 flex items-center justify-center">
-                      <p className="text-gray-500">Map view would be displayed here</p>
-                    </div>
-                  )}
                 </div>
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* Rating Modal */}
+      {showRatingModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900">Rate {shop.name}</h3>
+              <button onClick={() => setShowRatingModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="text-center mb-6">
+              <p className="text-gray-600 mb-4">How would you rate this shop?</p>
+              <div className="flex justify-center mb-2">
+                {renderStars(userRating, 'w-10 h-10', true)}
+              </div>
+              <p className="text-sm text-gray-500">
+                {userRating === 0 ? 'Click to rate' :
+                 userRating === 1 ? 'Poor' :
+                 userRating === 2 ? 'Fair' :
+                 userRating === 3 ? 'Good' :
+                 userRating === 4 ? 'Very Good' :
+                 'Excellent!'}
+              </p>
+            </div>
+
+            <div className="flex space-x-3">
+              <button
+                onClick={() => setShowRatingModal(false)}
+                className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitRating}
+                disabled={userRating === 0 || submittingRating}
+                className="flex-1 px-4 py-3 bg-primary text-white rounded-lg font-semibold hover:bg-primary-dark disabled:opacity-50 flex items-center justify-center"
+              >
+                {submittingRating ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Submit Rating'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Product Detail Modal */}
+      {selectedProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold text-gray-900">Product Details</h3>
+                <button onClick={() => setSelectedProduct(null)} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Product Image */}
+                <div className="w-full h-64 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
+                  {selectedProduct.image_url ? (
+                    <img src={selectedProduct.image_url} alt={selectedProduct.name} className="max-w-full max-h-64 object-contain" />
+                  ) : (
+                    <Package className="w-24 h-24 text-gray-300" />
+                  )}
+                </div>
+
+                {/* Product Info */}
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-2xl font-bold text-gray-900">{selectedProduct.name}</h4>
+                    {selectedProduct.brand && (
+                      <p className="text-gray-500">Brand: {selectedProduct.brand}</p>
+                    )}
+                  </div>
+
+                  <p className="text-3xl font-bold text-primary">₱{parseFloat(selectedProduct.price).toLocaleString()}</p>
+
+                  <div>
+                    <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
+                      selectedProduct.quantity > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                    }`}>
+                      {selectedProduct.quantity > 0 ? `${selectedProduct.quantity} in stock` : 'Out of Stock'}
+                    </span>
+                  </div>
+
+                  {selectedProduct.description && (
+                    <div>
+                      <p className="text-sm font-medium text-gray-700 mb-1">Description</p>
+                      <p className="text-gray-600">{selectedProduct.description}</p>
+                    </div>
+                  )}
+
+                  {/* Ratings */}
+                  <div className="flex items-center space-x-1">
+                    {[1, 2, 3, 4, 5].map(star => (
+                      <Star key={star} className={`w-5 h-5 ${star <= (selectedProduct.ratings || 0) ? 'text-amber-400 fill-amber-400' : 'text-gray-300'}`} />
+                    ))}
+                    <span className="text-sm text-gray-500 ml-2">({selectedProduct.ratings_count || 0} reviews)</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Warning */}
+              <div className="mt-6 bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start space-x-3">
+                <AlertTriangle className="w-6 h-6 text-amber-600 flex-shrink-0" />
+                <div>
+                  <p className="font-medium text-amber-800">Product is for Pickup Only</p>
+                  <p className="text-sm text-amber-700">You must collect this item from {shop.name}.</p>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="mt-6 flex space-x-3">
+                <button
+                  onClick={() => setSelectedProduct(null)}
+                  className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => {
+                    handleAddToCart(selectedProduct)
+                    setSelectedProduct(null)
+                  }}
+                  disabled={selectedProduct.quantity <= 0}
+                  className="flex-1 px-4 py-3 bg-primary text-white rounded-lg font-semibold hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                >
+                  <ShoppingCart className="w-5 h-5" />
+                  <span>Add to Cart</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
 export default ShopDetails
-

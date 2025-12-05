@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { Mail, Lock, User, LogIn, ShoppingBag, Shield, MapPin, Wrench, CheckCircle, X } from 'lucide-react'
+import { Mail, Lock, User, LogIn, ShoppingBag, MapPin, CheckCircle, X } from 'lucide-react'
 
 const SignUp = () => {
   const [name, setName] = useState('')
@@ -49,9 +49,16 @@ const SignUp = () => {
     try {
       const result = await signup(email, password, name, selectedRole)
       if (result.success) {
-        // Close modal and navigate to profile setup after successful signup
+        // Close modal and navigate based on role
         setIsModalOpen(false)
-        navigate('/profile-setup')
+        
+        // Store owners go directly to shop verification
+        if (selectedRole === 'store_owner') {
+          navigate('/shop-verification')
+        } else {
+          // Other roles go to profile setup
+          navigate('/profile-setup')
+        }
       } else {
         // Show error message if signup failed
         setError(result.error || 'Failed to create account. Please try again.')
@@ -95,6 +102,7 @@ const SignUp = () => {
     }
   }, [isModalOpen])
 
+  // Only Rider and Shop Owner can sign up - Admin accounts are hardcoded
   const roles = [
     {
       id: 'customer',
@@ -115,16 +123,6 @@ const SignUp = () => {
       hoverColor: 'hover:bg-blue-600',
       borderColor: 'border-blue-500',
       bgGradient: 'from-blue-500 to-blue-600',
-    },
-    {
-      id: 'admin',
-      name: 'Administrator',
-      description: 'Manage users, verify shops, and monitor system activity',
-      icon: Shield,
-      color: 'bg-slate-900',
-      hoverColor: 'hover:bg-slate-800',
-      borderColor: 'border-slate-500',
-      bgGradient: 'from-slate-700 to-slate-900',
     },
   ]
 

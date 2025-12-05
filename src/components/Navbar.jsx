@@ -10,6 +10,11 @@ const Navbar = () => {
   const { getCartItemCount } = useCart()
   const navigate = useNavigate()
   const cartItemCount = getCartItemCount()
+  
+  // Determine user type - default to customer/rider if role is not set
+  const isStoreOwner = user?.role === 'store_owner'
+  const isAdmin = user?.role === 'admin'
+  const isCustomer = !isStoreOwner && !isAdmin // Default to customer for any other case
 
   const handleLogout = async () => {
     await logout()
@@ -67,21 +72,42 @@ const Navbar = () => {
 
             {user ? (
               <>
-                <Link
-                  to="/dashboard"
-                  className="flex items-center space-x-2 text-gray-700 hover:text-primary transition-colors"
-                >
-                  {user.profileImage ? (
-                    <img
-                      src={user.profileImage}
-                      alt={user.name}
-                      className="w-8 h-8 rounded-full object-cover border-2 border-primary"
-                    />
-                  ) : (
+                {/* Show Dashboard for store owners, Admin for admins, Profile for customers/riders */}
+                {isStoreOwner && (
+                  <Link
+                    to="/store/dashboard"
+                    className="flex items-center space-x-2 text-gray-700 hover:text-primary transition-colors"
+                  >
                     <User className="w-5 h-5" />
-                  )}
-                  <span>Dashboard</span>
-                </Link>
+                    <span>Dashboard</span>
+                  </Link>
+                )}
+                {isAdmin && (
+                  <Link
+                    to="/admin/dashboard"
+                    className="flex items-center space-x-2 text-gray-700 hover:text-primary transition-colors"
+                  >
+                    <User className="w-5 h-5" />
+                    <span>Admin</span>
+                  </Link>
+                )}
+                {isCustomer && (
+                  <Link
+                    to="/profile"
+                    className="flex items-center space-x-2 text-gray-700 hover:text-primary transition-colors"
+                  >
+                    {user.profileImage ? (
+                      <img
+                        src={user.profileImage}
+                        alt={user.name}
+                        className="w-8 h-8 rounded-full object-cover border-2 border-primary"
+                      />
+                    ) : (
+                      <User className="w-5 h-5" />
+                    )}
+                    <span>Profile</span>
+                  </Link>
+                )}
                 <button
                   onClick={handleLogout}
                   className="flex items-center space-x-1 text-red-600 hover:text-red-700 transition-colors"
@@ -159,22 +185,45 @@ const Navbar = () => {
             </Link>
             {user ? (
               <>
-                <Link
-                  to="/dashboard"
-                  className="flex items-center space-x-2 text-gray-700 hover:text-primary transition-colors"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  {user.profileImage ? (
-                    <img
-                      src={user.profileImage}
-                      alt={user.name}
-                      className="w-8 h-8 rounded-full object-cover border-2 border-primary"
-                    />
-                  ) : (
+                {/* Mobile: Show Dashboard for store owners, Admin for admins, Profile for customers/riders */}
+                {isStoreOwner && (
+                  <Link
+                    to="/store/dashboard"
+                    className="flex items-center space-x-2 text-gray-700 hover:text-primary transition-colors"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
                     <User className="w-5 h-5" />
-                  )}
-                  <span>Dashboard</span>
-                </Link>
+                    <span>Dashboard</span>
+                  </Link>
+                )}
+                {isAdmin && (
+                  <Link
+                    to="/admin/dashboard"
+                    className="flex items-center space-x-2 text-gray-700 hover:text-primary transition-colors"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <User className="w-5 h-5" />
+                    <span>Admin</span>
+                  </Link>
+                )}
+                {isCustomer && (
+                  <Link
+                    to="/profile"
+                    className="flex items-center space-x-2 text-gray-700 hover:text-primary transition-colors"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    {user.profileImage ? (
+                      <img
+                        src={user.profileImage}
+                        alt={user.name}
+                        className="w-8 h-8 rounded-full object-cover border-2 border-primary"
+                      />
+                    ) : (
+                      <User className="w-5 h-5" />
+                    )}
+                    <span>Profile</span>
+                  </Link>
+                )}
                 <button
                   onClick={handleLogout}
                   className="flex items-center space-x-2 text-red-600 hover:text-red-700 transition-colors w-full text-left"

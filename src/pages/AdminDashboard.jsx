@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { testDatabaseConnection } from '../utils/dbConnectionTest'
+import { notificationService } from '../services/notificationService'
 import {
   Shield, Users, ShoppingBag, TrendingUp, Package, AlertCircle, CheckCircle2, Clock,
   FileText, BarChart3, Bell, Settings, LayoutDashboard, Search, Download, 
@@ -73,7 +74,7 @@ const AdminDashboard = () => {
           tin: shop.tin || '',
           credentials_url: shop.credentials_url || '',
           valid_id_url: shop.valid_id_url || '',
-          shop_image_url: shop.shop_image_url || '',
+          shop_image_url: shop.image_url || shop.shop_image_url || '',
           created_at: shop.created_at,
         }))
 
@@ -148,6 +149,34 @@ const AdminDashboard = () => {
 
     checkConnection()
   }, [fetchShops, fetchUsers])
+
+  // Set up real-time subscription for shops (to show new verifications immediately)
+  useEffect(() => {
+    if (!isSupabaseConfigured) return
+
+    const channel = supabase
+      .channel('shops-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
+          schema: 'public',
+          table: 'shops',
+        },
+        (payload) => {
+          console.log('Shop change detected:', payload)
+          // Refresh shops when a new shop is added or updated
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            fetchShops()
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [fetchShops, isSupabaseConfigured])
 
   // Filter states
   const [userSearch, setUserSearch] = useState('')
@@ -282,6 +311,13 @@ const AdminDashboard = () => {
 
   const handleShopStatusChange = async (shopId, newStatus) => {
     try {
+      // Get shop data to find owner_id
+      const shop = state.shops.find(s => s.id === shopId)
+      if (!shop) {
+        alert('Shop not found')
+        return
+      }
+
       // Update in database
       const { error } = await supabase
         .from('shops')
@@ -292,6 +328,20 @@ const AdminDashboard = () => {
         console.error('Error updating shop status:', error)
         alert('Failed to update shop status')
         return
+      }
+
+      // Send notification to shop owner if status is changed to 'verified'
+      if (newStatus === 'verified' && shop.owner_id) {
+        try {
+          await notificationService.createNotification(shop.owner_id, {
+            title: 'Shop Approved! 🎉',
+            message: `Congratulations! Your shop "${shop.name}" has been approved. You can now access your store dashboard.`,
+            type: 'success'
+          })
+        } catch (notifError) {
+          console.error('Error sending notification:', notifError)
+          // Don't fail the whole operation if notification fails
+        }
       }
 
       // Update local state
@@ -347,6 +397,23 @@ const AdminDashboard = () => {
         console.error('Error bulk verifying shops:', error)
         alert('Failed to verify shops')
         return
+      }
+
+      // Send notifications to all approved shop owners
+      const approvedShops = state.shops.filter(s => selectedShops.has(s.id))
+      for (const shop of approvedShops) {
+        if (shop.owner_id) {
+          try {
+            await notificationService.createNotification(shop.owner_id, {
+              title: 'Shop Approved! 🎉',
+              message: `Congratulations! Your shop "${shop.name}" has been approved. You can now access your store dashboard.`,
+              type: 'success'
+            })
+          } catch (notifError) {
+            console.error(`Error sending notification to shop owner ${shop.owner_id}:`, notifError)
+            // Continue with other notifications even if one fails
+          }
+        }
       }
 
       setState(prev => ({

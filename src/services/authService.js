@@ -19,10 +19,18 @@ export const authService = {
             name,
             role,
           },
+          // This tells Supabase to auto-confirm if email confirmation is disabled
+          emailRedirectTo: window.location.origin + '/login',
         },
       })
 
       if (error) throw error
+      
+      // Check if user needs email confirmation
+      if (data.user && !data.session) {
+        // User was created but no session = email confirmation required
+        console.log('Note: Email confirmation may be required. If you cannot login, please confirm your email or disable email confirmation in Supabase settings.')
+      }
 
       // Profile is created automatically via trigger
       // Wait a moment for the trigger to complete, then try to update if needed
@@ -62,10 +70,25 @@ export const authService = {
         }
       }
 
-      return { success: true, user: data.user, session: data.session }
+      // Check if email confirmation is required (no session returned)
+      const needsEmailConfirmation = data.user && !data.session
+      
+      return { 
+        success: true, 
+        user: data.user, 
+        session: data.session,
+        needsEmailConfirmation
+      }
     } catch (error) {
       console.error('Sign up error:', error)
-      return { success: false, error: error.message }
+      
+      // Provide helpful error messages
+      let errorMessage = error.message
+      if (error.message?.includes('User already registered')) {
+        errorMessage = 'An account with this email already exists. Please try logging in instead, or reset your password if you forgot it.'
+      }
+      
+      return { success: false, error: errorMessage }
     }
   },
 

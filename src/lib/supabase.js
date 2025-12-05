@@ -3,8 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 // Supabase configuration
 // Replace these with your actual Supabase project URL and anon key
 // You can find these in your Supabase project settings > API
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'YOUR_SUPABASE_URL'
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY'
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://cpxbcorlniggftfrnvzf.supabase.co'
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNweGJjb3JsbmlnZ2Z0ZnJudnpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3NDE3MjgsImV4cCI6MjA4MDMxNzcyOH0.LP7JSUo1Lc3J3n1bplUn-O5Hl7PB47oZJHUyRzCk_YI'
 
 // Check if Supabase is properly configured
 const isConfigured = supabaseUrl && 

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { supabase } from '../lib/supabase'
 import { Mail, Lock, LogIn, User, ShoppingBag, Shield, MapPin, Wrench, CheckCircle, ArrowLeft, X } from 'lucide-react'
 
 const Login = () => {
@@ -55,33 +56,80 @@ const Login = () => {
         // Close modal
         setIsLoginModalOpen(false)
         
-        // Check if user has completed profile setup
-        if (result.user?.needsSetup) {
-          // Redirect to complete profile
-          navigate('/complete-profile')
-        } else {
-          // Redirect to role-based homepage
-          if (selectedRole === 'admin') {
-            navigate('/admin/dashboard')
-          } else if (selectedRole === 'store_owner') {
-            navigate('/store/dashboard')
-          } else {
-            navigate('/dashboard')
+        // Special handling for store_owner
+        if (selectedRole === 'store_owner' && result.user) {
+          // Check if shop verification has been submitted
+          try {
+            const { data: shopData, error: shopError } = await supabase
+              .from('shops')
+              .select('status')
+              .eq('owner_id', result.user.id)
+              .maybeSingle()
+
+            if (shopError) {
+              console.error('Error checking shop status:', shopError)
+            }
+
+            // If shop exists, check status
+            if (shopData) {
+              // Shop verification already submitted
+              if (shopData.status === 'verified') {
+                // Shop is verified, go to dashboard
+                navigate('/store/dashboard')
+              } else {
+                // Shop is pending approval
+                navigate('/waiting-approval')
+              }
+            } else {
+              // No shop submitted yet, go to shop verification
+              navigate('/shop-verification')
+            }
+          } catch (shopCheckError) {
+            console.error('Error checking shop:', shopCheckError)
+            // If check fails, still navigate to shop verification
+            navigate('/shop-verification')
           }
+        } else if (selectedRole === 'admin') {
+          // Admin goes directly to admin dashboard
+          navigate('/admin/dashboard')
+        } else if (result.user?.needsSetup) {
+          // Other roles need profile setup
+          navigate('/profile-setup')
+        } else {
+          // Customer dashboard
+          navigate('/dashboard')
         }
       } else {
         // Show error message with helpful note about registration
         if (selectedRole === 'admin') {
           setError('Invalid admin credentials. Only authorized administrators can access this portal.')
+        } else if (selectedRole === 'store_owner') {
+          // Special message for store owners
+          // "Invalid login credentials" from Supabase means either wrong password OR account doesn't exist
+          // Since we can't distinguish, show a helpful message that covers both cases
+          const errorMsg = result.error || ''
+          if (errorMsg.includes('Account not found') || errorMsg.includes('not found') || 
+              errorMsg.includes('Invalid login credentials') || errorMsg.includes('Invalid login') ||
+              errorMsg.includes('incorrect email/password')) {
+            setError('Invalid email or password. If you just signed up, make sure you: 1) Used the correct password, 2) The account is confirmed (check Supabase Dashboard). If the password is wrong, reset it in Supabase Dashboard or sign up again.')
+          } else {
+            setError(errorMsg || 'Invalid email or password. Please check your credentials and try again.')
+          }
         } else {
-          setError(result.error || 'Account not found or incorrect email/password. If you haven\'t registered yet, please sign up first.')
+          setError(result.error || 'Invalid email or password. If you haven\'t registered yet, please sign up first.')
         }
       }
     } catch (err) {
       if (selectedRole === 'admin') {
         setError('Invalid admin credentials. Only authorized administrators can access this portal.')
+      } else if (selectedRole === 'store_owner') {
+        if (err.message?.includes('Invalid login credentials') || err.message?.includes('Invalid login')) {
+          setError('Invalid email or password. If you already signed up, the password might be incorrect. Please reset your password in Supabase Dashboard or sign up again with a new password.')
+        } else {
+          setError('Invalid email or password. Please check your credentials and try again.')
+        }
       } else {
-        setError('Account not found or incorrect email/password. If you haven\'t registered yet, please sign up first.')
+        setError('Invalid email or password. If you haven\'t registered yet, please sign up first.')
       }
     } finally {
       setLoading(false)
@@ -111,16 +159,23 @@ const Login = () => {
     try {
       const result = await signup(signUpEmail, signUpPassword, signUpName, selectedRole)
       if (result.success) {
+        // Check if email confirmation is needed
+        if (result.needsEmailConfirmation) {
+          // Show message but still proceed - admin can confirm in Supabase
+          setSignUpError('')
+          alert('Account created successfully! Note: Your account may need email confirmation. If you cannot login, please ask admin to confirm your account in Supabase Dashboard → Authentication → Users.')
+        }
+        
         // Close modal
         setIsSignUpModalOpen(false)
         
         // Redirect based on role
         if (selectedRole === 'store_owner') {
-          // Shop owners go to store dashboard (ShopOwnerRoute handles verification flow)
-          navigate('/store/dashboard')
+          // Shop owners go directly to shop verification page
+          navigate('/shop-verification')
         } else {
-          // Other roles go to complete profile
-          navigate('/complete-profile')
+          // Other roles go to profile setup
+          navigate('/profile-setup')
         }
       } else {
         // Show error message if signup failed

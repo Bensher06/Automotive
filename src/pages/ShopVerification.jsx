@@ -237,6 +237,33 @@ const ShopVerification = () => {
 
       if (insertError) throw insertError
 
+      // Notify all admins about the new shop verification
+      try {
+        // Get all admin users
+        const { data: admins, error: adminError } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('role', 'admin')
+
+        if (!adminError && admins && admins.length > 0) {
+          // Send notification to each admin
+          const notificationPromises = admins.map(admin =>
+            supabase.from('notifications').insert({
+              user_id: admin.id,
+              title: 'New Shop Verification Request',
+              message: `A new shop "${shopName}" owned by ${ownerName} has been submitted for verification. Please review it in the Verifications page.`,
+              type: 'info',
+              read: false
+            })
+          )
+
+          await Promise.all(notificationPromises)
+        }
+      } catch (notifError) {
+        console.error('Error sending admin notifications:', notifError)
+        // Don't fail the submission if notification fails
+      }
+
       setSuccess(true)
 
       // Redirect to waiting approval page after 3 seconds
