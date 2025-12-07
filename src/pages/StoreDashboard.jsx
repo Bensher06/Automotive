@@ -1410,25 +1410,39 @@ const ProductsView = ({ dashboardData, setDashboardData, user, ownedShops, selec
     imagePreview: null
   })
 
-  // Fetch products from Supabase
+  // Fetch products from Supabase - by shop_id (products table doesn't have owner_id)
   const fetchProducts = useCallback(async () => {
     if (!user?.id) return
     setLoading(true)
     try {
+      // Get shop_id from selected shop or first owned shop
+      const shopId = selectedShopId || (ownedShops.length > 0 ? ownedShops[0].id : null)
+      
+      if (!shopId) {
+        setAllProducts([])
+        setLoading(false)
+        return
+      }
+
       const { data, error } = await supabase
         .from('products')
         .select('*')
-        .eq('owner_id', user.id)
+        .eq('shop_id', shopId)
         .order('created_at', { ascending: false })
 
-      if (error) throw error
+      if (error) {
+        console.error('Products fetch error:', error)
+        throw error
+      }
+      
       setAllProducts(data || [])
     } catch (err) {
       console.error('Error fetching products:', err)
+      setAllProducts([])
     } finally {
       setLoading(false)
     }
-  }, [user?.id])
+  }, [user?.id, selectedShopId, ownedShops])
 
   useEffect(() => {
     fetchProducts()
@@ -1524,12 +1538,11 @@ const ProductsView = ({ dashboardData, setDashboardData, user, ownedShops, selec
       // Get shop_id from ownedShops
       const shopId = selectedShopId || (ownedShops.length > 0 ? ownedShops[0].id : null)
 
-      // Insert product
+      // Insert product (removed owner_id - products only use shop_id)
       const initialQuantity = parseInt(productForm.quantity) || 0
       const { error: insertError } = await supabase
         .from('products')
         .insert({
-          owner_id: user.id,
           shop_id: shopId,
           name: productForm.name,
           price: parseFloat(productForm.price),

@@ -36,13 +36,33 @@ export const profileService = {
 
   /**
    * Get current user's profile
+   * Works with profiles table authentication (doesn't require Supabase Auth)
    */
-  async getCurrentProfile() {
+  async getCurrentProfile(userId = null) {
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return { success: false, error: 'Not authenticated' }
+      // If userId provided, use it directly
+      if (userId) {
+        return await this.getProfile(userId)
+      }
 
-      return await this.getProfile(user.id)
+      // Try to get from localStorage (profiles table auth)
+      const storedUser = localStorage.getItem('motoZapp_user')
+      if (storedUser) {
+        const userData = JSON.parse(storedUser)
+        return await this.getProfile(userData.id)
+      }
+
+      // Fallback: Try Supabase Auth (for web-created accounts)
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          return await this.getProfile(user.id)
+        }
+      } catch (authError) {
+        // Not authenticated via Supabase Auth - that's OK
+      }
+
+      return { success: false, error: 'Not authenticated' }
     } catch (error) {
       console.error('Get current profile error:', error)
       return { success: false, error: error.message }
@@ -51,27 +71,60 @@ export const profileService = {
 
   /**
    * Update user profile
-   * Safely updates or creates profile without affecting existing data
+   * Works with profiles table authentication (doesn't require Supabase Auth)
    */
   async updateProfile(userId, updates) {
     try {
-      // Get user email and role from auth
-      const authResult = await supabase.auth.getUser()
-      const user = authResult?.data?.user
-      if (!user) {
+      // Get userId from parameter, localStorage, or Supabase Auth (fallback)
+      let targetUserId = userId
+      
+      if (!targetUserId) {
+        // Try to get from localStorage (profiles table auth)
+        const storedUser = localStorage.getItem('motoZapp_user')
+        if (storedUser) {
+          const userData = JSON.parse(storedUser)
+          targetUserId = userData.id
+        } else {
+          // Fallback: Try Supabase Auth
+          try {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (user) {
+              targetUserId = user.id
+            }
+          } catch (authError) {
+            // Not authenticated via Supabase Auth
+          }
+        }
+      }
+
+      if (!targetUserId) {
         return { success: false, error: 'Not authenticated' }
       }
       
       // Map frontend field names to database column names
       const dbUpdates = {
-        full_name: updates.name, // Database uses full_name, not name
+        // Name fields
+        full_name: updates.full_name || updates.name,
+        firstName: updates.firstName,
+        middleInitial: updates.middleInitial,
+        lastName: updates.lastName,
+        // Contact
         phone: updates.phone,
+        // Address (full combined)
         address: updates.address,
-        vehicle_brand: updates.vehicle?.brand,
-        vehicle_model: updates.vehicle?.model,
-        vehicle_year: updates.vehicle?.year ? parseInt(updates.vehicle.year) : null,
+        // Address breakdown
+        region: updates.region,
+        province: updates.province,
+        city: updates.city,
+        barangay: updates.barangay,
+        street_address: updates.street_address,
+        // Vehicle details
+        vehicle_brand: updates.vehicle_brand || updates.vehicle?.brand,
+        vehicle_model: updates.vehicle_model || updates.vehicle?.model,
+        vehicle_year: updates.vehicle_year || (updates.vehicle?.year ? parseInt(updates.vehicle.year) : null),
         profile_image: updates.profileImage,
         needs_setup: updates.needsSetup !== undefined ? updates.needsSetup : false,
+        updated_at: new Date().toISOString(),
       }
 
       // Remove undefined and null values (but keep false and 0)
@@ -86,7 +139,7 @@ export const profileService = {
       let result = await supabase
         .from('profiles')
         .update(dbUpdates)
-        .eq('id', userId)
+        .eq('id', targetUserId)
         .select()
 
       // If update succeeded and returned data, we're done
@@ -108,7 +161,7 @@ export const profileService = {
           const fetchResult = await supabase
             .from('profiles')
             .select('*')
-            .eq('id', userId)
+            .eq('id', targetUserId)
             .maybeSingle()
           
           if (fetchResult.data) {
@@ -124,11 +177,33 @@ export const profileService = {
 
       // If update returned 0 rows (profile doesn't exist) and no error, try INSERT
       if (!result.data || result.data.length === 0) {
+        // Get email from stored user or updates
+        const storedUser = localStorage.getItem('motoZapp_user')
+        let userEmail = ''
+        let userRole = 'customer'
+        
+        if (storedUser) {
+          const userData = JSON.parse(storedUser)
+          userEmail = userData.email || ''
+          userRole = userData.role || 'customer'
+        } else {
+          // Try Supabase Auth as fallback
+          try {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (user) {
+              userEmail = user.email || ''
+              userRole = user.user_metadata?.role || updates.role || 'customer'
+            }
+          } catch (authError) {
+            // Not authenticated
+          }
+        }
+
         // Profile doesn't exist - INSERT with all required fields
         const insertData = {
-          id: userId,
-          email: user.email || '',
-          role: user.user_metadata?.role || updates.role || 'customer',
+          id: targetUserId,
+          email: userEmail || updates.email || '',
+          role: userRole || updates.role || 'customer',
           ...dbUpdates,
         }
 
@@ -154,7 +229,7 @@ export const profileService = {
           result = await supabase
             .from('profiles')
             .update(dbUpdates)
-            .eq('id', userId)
+            .eq('id', targetUserId)
             .select()
             .maybeSingle()
           
@@ -192,10 +267,30 @@ export const profileService = {
    */
   async updateCurrentProfile(updates) {
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return { success: false, error: 'Not authenticated' }
+      // Get userId from localStorage or Supabase Auth
+      let userId = null
+      
+      const storedUser = localStorage.getItem('motoZapp_user')
+      if (storedUser) {
+        const userData = JSON.parse(storedUser)
+        userId = userData.id
+      } else {
+        // Fallback: Try Supabase Auth
+        try {
+          const { data: { user } } = await supabase.auth.getUser()
+          if (user) {
+            userId = user.id
+          }
+        } catch (authError) {
+          // Not authenticated via Supabase Auth
+        }
+      }
 
-      return await this.updateProfile(user.id, updates)
+      if (!userId) {
+        return { success: false, error: 'Not authenticated' }
+      }
+
+      return await this.updateProfile(userId, updates)
     } catch (error) {
       console.error('Update current profile error:', error)
       return { success: false, error: error.message }

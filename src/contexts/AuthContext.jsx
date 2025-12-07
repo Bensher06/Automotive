@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import { authService } from '../services/authService'
 import { profileService } from '../services/profileService'
+import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext()
 
@@ -57,7 +58,64 @@ export const AuthProvider = ({ children }) => {
           return
         }
 
-        // Regular Supabase session
+        // Check for user session in localStorage (from profiles table login)
+        const storedUser = localStorage.getItem('motoZapp_user')
+        if (storedUser) {
+          try {
+            const userData = JSON.parse(storedUser)
+            // Verify user still exists in profiles table
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', userData.id)
+              .maybeSingle()
+            
+            if (profileData && mounted) {
+              // Refresh user data from database
+              const refreshedUser = {
+                id: profileData.id,
+                email: profileData.email || userData.email,
+                name: profileData.full_name || 
+                      (profileData.firstName && profileData.lastName 
+                        ? `${profileData.firstName} ${profileData.middleInitial ? profileData.middleInitial + '. ' : ''}${profileData.lastName}`
+                        : null) || 
+                      userData.name,
+                firstName: profileData.firstName,
+                middleInitial: profileData.middleInitial,
+                lastName: profileData.lastName,
+                phone: profileData.phone,
+                address: profileData.address,
+                region: profileData.region,
+                province: profileData.province,
+                city: profileData.city,
+                barangay: profileData.barangay,
+                streetAddress: profileData.street_address,
+                role: profileData.role || userData.role,
+                needsSetup: profileData.needs_setup || false,
+                profileImage: profileData.profile_image || profileData.avatar_url,
+                vehicle: profileData.vehicle_brand || profileData.vehicle_model || profileData.vehicle_year
+                  ? {
+                      brand: profileData.vehicle_brand,
+                      model: profileData.vehicle_model,
+                      year: profileData.vehicle_year,
+                    }
+                  : null,
+              }
+              setUser(refreshedUser)
+              localStorage.setItem('motoZapp_user', JSON.stringify(refreshedUser))
+              setLoading(false)
+              return
+            } else {
+              // User not found in database, clear session
+              localStorage.removeItem('motoZapp_user')
+            }
+          } catch (error) {
+            console.error('Error verifying stored user:', error)
+            localStorage.removeItem('motoZapp_user')
+          }
+        }
+
+        // Fallback: Try Supabase session (for accounts created via web signup)
         const sessionResult = await authService.getSession()
         if (sessionResult.success && sessionResult.session) {
           const authUser = sessionResult.session.user
@@ -186,7 +244,78 @@ export const AuthProvider = ({ children }) => {
         }
       }
 
-      // Regular Supabase authentication for non-admin users
+      // PRIMARY: Check profiles table for authentication (mobile app compatible)
+      try {
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('email', email)
+          .eq('password', password)
+          .maybeSingle()
+
+        if (!profileError && profileData) {
+          // Found account in profiles table - authenticate user
+          const userRole = profileData.role || role
+          
+          // ROLE VALIDATION: Check if user is trying to login with the correct role
+          if (userRole && userRole !== role) {
+            const roleDisplayNames = {
+              'customer': 'Rider',
+              'store_owner': 'Shop Owner',
+              'admin': 'Administrator'
+            }
+            const registeredRoleName = roleDisplayNames[userRole] || userRole
+            const selectedRoleName = roleDisplayNames[role] || role
+            
+            return { 
+              success: false, 
+              error: `This account is registered as "${registeredRoleName}". Please sign in using the "${registeredRoleName}" option instead of "${selectedRoleName}".`
+            }
+          }
+
+          // Create user object from profile data
+          const authenticatedUser = {
+            id: profileData.id,
+            email: profileData.email || email,
+            name: profileData.full_name || 
+                  (profileData.firstName && profileData.lastName 
+                    ? `${profileData.firstName} ${profileData.middleInitial ? profileData.middleInitial + '. ' : ''}${profileData.lastName}`
+                    : null) || 
+                  email?.split('@')[0] || 
+                  'User',
+            firstName: profileData.firstName,
+            middleInitial: profileData.middleInitial,
+            lastName: profileData.lastName,
+            phone: profileData.phone,
+            address: profileData.address,
+            region: profileData.region,
+            province: profileData.province,
+            city: profileData.city,
+            barangay: profileData.barangay,
+            streetAddress: profileData.street_address,
+            role: userRole,
+            needsSetup: profileData.needs_setup || false,
+            profileImage: profileData.profile_image || profileData.avatar_url,
+            vehicle: profileData.vehicle_brand || profileData.vehicle_model || profileData.vehicle_year
+              ? {
+                  brand: profileData.vehicle_brand,
+                  model: profileData.vehicle_model,
+                  year: profileData.vehicle_year,
+                }
+              : null,
+          }
+          
+          setUser(authenticatedUser)
+          // Store session in localStorage for persistence
+          localStorage.setItem('motoZapp_user', JSON.stringify(authenticatedUser))
+          
+          return { success: true, user: authenticatedUser }
+        }
+      } catch (profileAuthError) {
+        console.error('Error checking profiles table:', profileAuthError)
+      }
+
+      // FALLBACK: Try Supabase Auth (for accounts created via web signup)
       const result = await authService.signIn(email, password)
       
       if (result.success && result.user) {
@@ -273,17 +402,20 @@ export const AuthProvider = ({ children }) => {
       const result = await authService.signUp(email, password, name, role)
       
       if (result.success && result.user) {
-        // Check if email confirmation is required
-        if (result.needsEmailConfirmation) {
-          // Account created but needs email confirmation
-          // We'll still return success but flag it
-          return { 
-            success: true, 
-            user: result.user, 
-            needsEmailConfirmation: true,
-            message: 'Account created! Please check your email to confirm your account, or ask admin to confirm it in Supabase Dashboard.'
-          }
+        // Account created in profiles table - create user session
+        const newUser = {
+          id: result.user.id,
+          email: result.user.email,
+          name: result.user.name,
+          role: result.user.role,
+          needsSetup: true,
         }
+        
+        setUser(newUser)
+        // Store in localStorage for persistence
+        localStorage.setItem('motoZapp_user', JSON.stringify(newUser))
+        
+        // Email verification is disabled - proceed directly
         
         // Profile is created via trigger, but we need to wait for it
         // Retry a few times to get the profile (trigger might take a moment)
@@ -342,10 +474,11 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      // Clear admin session from localStorage
+      // Clear all session data from localStorage
       localStorage.removeItem('motoZapp_admin')
+      localStorage.removeItem('motoZapp_user')
       
-      // Clear Supabase session
+      // Clear Supabase session (if exists)
       await authService.signOut()
       setUser(null)
       return { success: true }
@@ -353,6 +486,7 @@ export const AuthProvider = ({ children }) => {
       console.error('Logout error:', error)
       // Still clear local state even if Supabase fails
       localStorage.removeItem('motoZapp_admin')
+      localStorage.removeItem('motoZapp_user')
       setUser(null)
       return { success: false, error: error.message }
     }

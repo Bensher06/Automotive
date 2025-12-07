@@ -12,6 +12,8 @@ const SignUp = () => {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [showSuccessModal, setShowSuccessModal] = useState(false)
+  const [successMessage, setSuccessMessage] = useState('')
   const { signup } = useAuth()
   const navigate = useNavigate()
 
@@ -49,16 +51,12 @@ const SignUp = () => {
     try {
       const result = await signup(email, password, name, selectedRole)
       if (result.success) {
-        // Close modal and navigate based on role
+        // Close signup modal
         setIsModalOpen(false)
         
-        // Store owners go directly to shop verification
-        if (selectedRole === 'store_owner') {
-          navigate('/shop-verification')
-        } else {
-          // Other roles go to profile setup
-          navigate('/profile-setup')
-        }
+        // Show success modal
+        setSuccessMessage('Your account has been created successfully!')
+        setShowSuccessModal(true)
       } else {
         // Show error message if signup failed
         setError(result.error || 'Failed to create account. Please try again.')
@@ -68,6 +66,17 @@ const SignUp = () => {
       setError(err.message || 'Failed to create account. Please try again.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleSuccessModalClose = () => {
+    setShowSuccessModal(false)
+    setSuccessMessage('')
+    // Redirect based on role after closing success modal
+    if (selectedRole === 'store_owner') {
+      navigate('/shop-verification')
+    } else {
+      navigate('/profile-setup')
     }
   }
 
@@ -378,6 +387,40 @@ const SignUp = () => {
                   </Link>
                 </p>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Success Modal - Email Verification */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Backdrop with blur */}
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" />
+          
+          {/* Modal Content */}
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 animate-in fade-in zoom-in duration-300">
+            <div className="p-8 text-center">
+              {/* Success Icon */}
+              <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-6">
+                <CheckCircle className="w-10 h-10 text-green-600" />
+              </div>
+              
+              {/* Title */}
+              <h2 className="text-2xl font-bold text-slate-900 mb-3">Account Created!</h2>
+              
+              {/* Message */}
+              <p className="text-slate-600 mb-6">
+                {successMessage}
+              </p>
+              
+              {/* Continue Button */}
+              <button
+                onClick={handleSuccessModalClose}
+                className="w-full py-3 px-6 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+              >
+                Continue
+              </button>
             </div>
           </div>
         </div>

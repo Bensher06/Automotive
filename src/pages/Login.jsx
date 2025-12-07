@@ -21,6 +21,10 @@ const Login = () => {
   const [signUpError, setSignUpError] = useState('')
   const [signUpLoading, setSignUpLoading] = useState(false)
   
+  // Success modal state
+  const [showSuccessModal, setShowSuccessModal] = useState(false)
+  const [successMessage, setSuccessMessage] = useState('')
+  
   const { login, user, signup } = useAuth()
   const navigate = useNavigate()
 
@@ -159,24 +163,12 @@ const Login = () => {
     try {
       const result = await signup(signUpEmail, signUpPassword, signUpName, selectedRole)
       if (result.success) {
-        // Check if email confirmation is needed
-        if (result.needsEmailConfirmation) {
-          // Show message but still proceed - admin can confirm in Supabase
-          setSignUpError('')
-          alert('Account created successfully! Note: Your account may need email confirmation. If you cannot login, please ask admin to confirm your account in Supabase Dashboard → Authentication → Users.')
-        }
-        
-        // Close modal
+        // Close sign up modal
         setIsSignUpModalOpen(false)
         
-        // Redirect based on role
-        if (selectedRole === 'store_owner') {
-          // Shop owners go directly to shop verification page
-          navigate('/shop-verification')
-        } else {
-          // Other roles go to profile setup
-          navigate('/profile-setup')
-        }
+        // Show success modal
+        setSuccessMessage('Your account has been created successfully!')
+        setShowSuccessModal(true)
       } else {
         // Show error message if signup failed
         setSignUpError(result.error || 'Failed to create account. Please try again.')
@@ -186,6 +178,17 @@ const Login = () => {
       setSignUpError(err.message || 'Failed to create account. Please try again.')
     } finally {
       setSignUpLoading(false)
+    }
+  }
+
+  const handleSuccessModalClose = () => {
+    setShowSuccessModal(false)
+    setSuccessMessage('')
+    // Redirect based on role after closing success modal
+    if (selectedRole === 'store_owner') {
+      navigate('/shop-verification')
+    } else {
+      navigate('/profile-setup')
     }
   }
 
@@ -642,6 +645,40 @@ const Login = () => {
                   </button>
                 </p>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Success Modal - Email Verification */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Backdrop with blur */}
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" />
+          
+          {/* Modal Content */}
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 animate-in fade-in zoom-in duration-300">
+            <div className="p-8 text-center">
+              {/* Success Icon */}
+              <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-6">
+                <CheckCircle className="w-10 h-10 text-green-600" />
+              </div>
+              
+              {/* Title */}
+              <h2 className="text-2xl font-bold text-slate-900 mb-3">Account Created!</h2>
+              
+              {/* Message */}
+              <p className="text-slate-600 mb-6">
+                {successMessage}
+              </p>
+              
+              {/* Continue Button */}
+              <button
+                onClick={handleSuccessModalClose}
+                className="w-full py-3 px-6 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+              >
+                Continue
+              </button>
             </div>
           </div>
         </div>
