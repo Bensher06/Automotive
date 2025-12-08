@@ -244,34 +244,144 @@ export const AuthProvider = ({ children }) => {
         }
       }
 
-      // PRIMARY: Check profiles table for authentication (mobile app compatible)
+      // PRIMARY: Check profiles table for authentication
+      // STRICT ROLE VALIDATION - Users can only login with the role they registered with
+      // Query directly for the specific email + role combination to handle duplicate emails
       try {
-        const { data: profileData, error: profileError } = await supabase
+        // Map role names: 'customer' = 'customer', 'store_owner' = 'store_owner'
+        const dbRole = role === 'customer' ? 'customer' : 
+                      role === 'store_owner' ? 'store_owner' : 
+                      role === 'admin' ? 'admin' : role
+        
+        // Query directly for profile with this email AND role (handles duplicate emails)
+        // Use .limit(1) first, then check if we got exactly one result
+        console.log(`[LOGIN] Querying profiles table for: email=${email}, role=${dbRole}`)
+        
+        const { data: profilesList, error: listError } = await supabase
           .from('profiles')
           .select('*')
           .eq('email', email)
-          .eq('password', password)
-          .maybeSingle()
-
-        if (!profileError && profileData) {
-          // Found account in profiles table - authenticate user
-          const userRole = profileData.role || role
+          .eq('role', dbRole)
+          .limit(2) // Get up to 2 to detect duplicates
+        
+        console.log(`[LOGIN] Query result:`, { 
+          found: profilesList?.length || 0, 
+          error: listError?.message || null 
+        })
+        
+        let profileData = null
+        let profileError = null
+        
+        if (listError) {
+          console.error('[LOGIN] Query error:', listError)
+          profileError = listError
+        } else if (profilesList && profilesList.length === 1) {
+          // Exactly one profile found - perfect
+          console.log('[LOGIN] Profile found successfully')
+          profileData = profilesList[0]
+        } else if (profilesList && profilesList.length > 1) {
+          // Multiple profiles with same email+role - data integrity issue
+          console.error('[LOGIN] Multiple profiles found with same email+role')
+          profileError = { message: 'Multiple profiles found with same email and role' }
+        } else {
+          // No profiles found - check if email exists with different role
+          console.log('[LOGIN] No profile found with this email and role')
+          profileData = null
           
-          // ROLE VALIDATION: Check if user is trying to login with the correct role
-          if (userRole && userRole !== role) {
+          // Check if email exists with different role(s)
+          const { data: allProfiles, error: allProfilesError } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('email', email)
+          
+          if (!allProfilesError && allProfiles && allProfiles.length > 0) {
+            const existingRoles = allProfiles.map(p => p.role)
             const roleDisplayNames = {
-              'customer': 'Rider',
+              'customer': 'Motorist',
               'store_owner': 'Shop Owner',
               'admin': 'Administrator'
             }
-            const registeredRoleName = roleDisplayNames[userRole] || userRole
+            
+            // Email exists but with different role(s)
+            const registeredRoleName = roleDisplayNames[existingRoles[0]] || existingRoles[0]
             const selectedRoleName = roleDisplayNames[role] || role
             
-            return { 
-              success: false, 
+            return {
+              success: false,
               error: `This account is registered as "${registeredRoleName}". Please sign in using the "${registeredRoleName}" option instead of "${selectedRoleName}".`
             }
           }
+        }
+        
+        if (profileError) {
+          console.log('Error querying profiles:', profileError.message)
+          
+          // If error is due to multiple rows, check what roles exist for this email
+          if (profileError.message.includes('multiple') || profileError.message.includes('no rows')) {
+            // Try to get all profiles with this email to check roles
+            const { data: allProfiles, error: allProfilesError } = await supabase
+              .from('profiles')
+              .select('role')
+              .eq('email', email)
+            
+            if (!allProfilesError && allProfiles && allProfiles.length > 0) {
+              const existingRoles = allProfiles.map(p => p.role)
+              const roleDisplayNames = {
+                'customer': 'Motorist',
+                'store_owner': 'Shop Owner',
+                'admin': 'Administrator'
+              }
+              
+              // If email exists but with different role(s)
+              if (!existingRoles.includes(dbRole)) {
+                const registeredRoleName = roleDisplayNames[existingRoles[0]] || existingRoles[0]
+                const selectedRoleName = roleDisplayNames[role] || role
+                
+                return {
+                  success: false,
+                  error: `This account is registered as "${registeredRoleName}". Please sign in using the "${registeredRoleName}" option instead of "${selectedRoleName}".`
+                }
+              }
+              
+              // If role exists but query failed, there might be duplicate entries with same email+role
+              // This shouldn't happen, but if it does, return error
+              return {
+                success: false,
+                error: 'Multiple accounts found with this email and role. Please contact support.'
+              }
+            }
+          }
+          
+          // For any other query error, return error (don't fall back to Supabase Auth)
+          return {
+            success: false,
+            error: 'Unable to verify account. Please try again or contact support.'
+          }
+        }
+        
+        if (profileData) {
+          console.log(`${dbRole} found in profiles table`)
+          
+          // Check password
+          const storedPassword = profileData.password
+          
+          // If no password stored
+          if (!storedPassword || storedPassword === '') {
+            return {
+              success: false,
+              error: 'Your account exists but no password is set. Please contact support.'
+            }
+          }
+          
+          // Check if password matches (plain text comparison)
+          if (storedPassword !== password) {
+            return { 
+              success: false, 
+              error: 'Incorrect password. Please try again.' 
+            }
+          }
+          
+          // Password matched - authenticate user
 
           // Create user object from profile data
           const authenticatedUser = {
@@ -293,7 +403,7 @@ export const AuthProvider = ({ children }) => {
             city: profileData.city,
             barangay: profileData.barangay,
             streetAddress: profileData.street_address,
-            role: userRole,
+            role: profileData.role || dbRole, // Use actual role from database
             needsSetup: profileData.needs_setup || false,
             profileImage: profileData.profile_image || profileData.avatar_url,
             vehicle: profileData.vehicle_brand || profileData.vehicle_model || profileData.vehicle_year
@@ -303,6 +413,11 @@ export const AuthProvider = ({ children }) => {
                   year: profileData.vehicle_year,
                 }
               : null,
+            // Store owner specific fields (from profiles table)
+            shopName: profileData.shop_name || null,
+            shopImage: profileData.shop_image || null,
+            shopDescription: profileData.shop_description || null,
+            totalReviews: profileData.total_reviews || 0,
           }
           
           setUser(authenticatedUser)
@@ -310,87 +425,31 @@ export const AuthProvider = ({ children }) => {
           localStorage.setItem('motoZapp_user', JSON.stringify(authenticatedUser))
           
           return { success: true, user: authenticatedUser }
-        }
-      } catch (profileAuthError) {
-        console.error('Error checking profiles table:', profileAuthError)
-      }
-
-      // FALLBACK: Try Supabase Auth (for accounts created via web signup)
-      const result = await authService.signIn(email, password)
-      
-      if (result.success && result.user) {
-        // Load profile to check the registered role
-        try {
-          const profileResult = await profileService.getProfile(result.user.id)
-          if (profileResult.success && profileResult.data) {
-            const userRegisteredRole = profileResult.data.role
-            
-            // ROLE VALIDATION: Check if user is trying to login with the correct role
-            if (userRegisteredRole && userRegisteredRole !== role) {
-              // Sign out since role doesn't match
-              await authService.signOut()
-              
-              // Provide helpful error message based on their registered role
-              const roleDisplayNames = {
-                'customer': 'Rider',
-                'store_owner': 'Shop Owner',
-                'admin': 'Administrator'
-              }
-              const registeredRoleName = roleDisplayNames[userRegisteredRole] || userRegisteredRole
-              const selectedRoleName = roleDisplayNames[role] || role
-              
-              return { 
-                success: false, 
-                error: `This account is registered as "${registeredRoleName}". Please sign in using the "${registeredRoleName}" option instead of "${selectedRoleName}".`
-              }
-            }
-            
-            // Role matches, proceed with login
-            const transformedUser = transformProfileToUser(result.user, profileResult.data)
-            setUser(transformedUser)
-            return { success: true, user: transformedUser }
-          }
-        } catch (profileError) {
-          console.warn('Profile load failed, continuing with basic user:', profileError)
-        }
-        
-        // If profile doesn't exist, check user metadata for role
-        const userMetadataRole = result.user.user_metadata?.role
-        
-        // Validate role from metadata if available
-        if (userMetadataRole && userMetadataRole !== role) {
-          await authService.signOut()
+        } else {
+          // No account found with this email and role
           const roleDisplayNames = {
-            'customer': 'Rider',
+            'customer': 'Motorist',
             'store_owner': 'Shop Owner',
             'admin': 'Administrator'
           }
-          const registeredRoleName = roleDisplayNames[userMetadataRole] || userMetadataRole
           const selectedRoleName = roleDisplayNames[role] || role
           
-          return { 
-            success: false, 
-            error: `This account is registered as "${registeredRoleName}". Please sign in using the "${registeredRoleName}" option instead of "${selectedRoleName}".`
+          return {
+            success: false,
+            error: `No ${selectedRoleName} account found with this email. Please sign up first or check if you registered with a different account type.`
           }
         }
-        
-        // If profile doesn't exist or failed to load, create basic user
-        // Get role from user metadata if available
-        const userRole = result.user.user_metadata?.role || role
-        const userName = result.user.user_metadata?.name || result.user.email?.split('@')[0] || 'User'
-        
-        const basicUser = {
-          id: result.user.id,
-          email: result.user.email,
-          name: userName,
-          role: userRole,
-          needsSetup: true,
+      } catch (profileAuthError) {
+        console.error('Error checking profiles table:', profileAuthError)
+        return {
+          success: false,
+          error: 'Unable to connect to the server. Please try again.'
         }
-        setUser(basicUser)
-        return { success: true, user: basicUser }
       }
-      
-      return result
+
+      // NO FALLBACK TO SUPABASE AUTH
+      // All authentication must come from profiles table only
+      // If profiles table query failed, return error (don't try other tables)
     } catch (error) {
       console.error('Login error:', error)
       return { success: false, error: error.message }
@@ -503,4 +562,5 @@ export const AuthProvider = ({ children }) => {
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
+
 

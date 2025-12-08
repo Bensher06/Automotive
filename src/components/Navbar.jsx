@@ -11,7 +11,7 @@ const Navbar = () => {
   const navigate = useNavigate()
   const cartItemCount = getCartItemCount()
   
-  // Determine user type - default to customer/rider if role is not set
+  // Determine user type - default to customer/motorist if role is not set
   const isStoreOwner = user?.role === 'store_owner'
   const isAdmin = user?.role === 'admin'
   const isCustomer = !isStoreOwner && !isAdmin // Default to customer for any other case
@@ -72,7 +72,7 @@ const Navbar = () => {
 
             {user ? (
               <>
-                {/* Show Dashboard for store owners, Admin for admins, Profile for customers/riders */}
+                {/* Show Dashboard for store owners, Admin for admins, Profile for customers/motorists */}
                 {isStoreOwner && (
                   <Link
                     to="/store/dashboard"
@@ -185,7 +185,7 @@ const Navbar = () => {
             </Link>
             {user ? (
               <>
-                {/* Mobile: Show Dashboard for store owners, Admin for admins, Profile for customers/riders */}
+                {/* Mobile: Show Dashboard for store owners, Admin for admins, Profile for customers/motorists */}
                 {isStoreOwner && (
                   <Link
                     to="/store/dashboard"

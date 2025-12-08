@@ -165,7 +165,8 @@ const Marketplace = () => {
         name: selectedProduct.name,
         price: selectedProduct.price,
         image: selectedProduct.image_url || selectedProduct.image,
-        shop: selectedProduct.shop
+        shop: selectedProduct.shop,
+        shop_id: selectedProduct.shop_id
       }, 1)
       setAddedToCart(true)
       setTimeout(() => setAddedToCart(false), 2000)

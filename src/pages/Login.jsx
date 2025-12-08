@@ -37,7 +37,7 @@ const Login = () => {
       } else if (storedUser.role === 'store_owner') {
         navigate('/store/dashboard')
       } else {
-        navigate('/dashboard')
+        navigate('/')
       }
     } else {
       // If not logged in, go to home page
@@ -100,8 +100,8 @@ const Login = () => {
           // Other roles need profile setup
           navigate('/profile-setup')
         } else {
-          // Customer dashboard
-          navigate('/dashboard')
+          // Customer home
+          navigate('/')
         }
       } else {
         // Show error message with helpful note about registration
@@ -249,7 +249,7 @@ const Login = () => {
   const roles = [
     {
       id: 'customer',
-      name: "I'm a Rider",
+      name: "I'm a Motorist",
       description: 'Find mechanics, shop for parts, and get roadside assistance',
       icon: User,
       color: 'bg-amber-500',

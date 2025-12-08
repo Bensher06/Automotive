@@ -72,7 +72,7 @@ const Cart = () => {
         // Calculate total items for this shop
         const totalItems = items.reduce((sum, item) => sum + item.quantity, 0)
 
-        // 1. Create order
+        // 1. Create order with full customer info
         const { data: orderData, error: orderError } = await supabase
           .from('orders')
           .insert({
@@ -82,9 +82,12 @@ const Cart = () => {
             payment_method: 'Pickup',
             shipping_address: 'For Pickup',
             contact_number: user.phone || 'N/A',
-            customer_name: user.name || user.email,
+            customer_name: user.name || user.full_name || user.email,
             customer_email: user.email,
-            status: 'pending'
+            customer_phone: user.phone || 'N/A',
+            customer_profile_image: user.profileImage || user.profile_image || '',
+            status: 'pending',
+            created_at: new Date().toISOString() // Explicit order time
           })
           .select()
           .single()

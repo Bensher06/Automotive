@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useCart } from '../contexts/CartContext'
+import { supabase } from '../lib/supabase'
 import {
   ArrowLeft,
   CreditCard,
@@ -31,6 +32,7 @@ const Checkout = () => {
   const [contactNumber, setContactNumber] = useState('')
   const [placingOrder, setPlacingOrder] = useState(false)
   const [orderPlaced, setOrderPlaced] = useState(false)
+  const [orderError, setOrderError] = useState('')
 
   useEffect(() => {
     // Check if this is a "Buy Now" from ProductDetails
@@ -86,6 +88,11 @@ const Checkout = () => {
 
   const handlePlaceOrder = async () => {
     // Validation
+    if (!user) {
+      alert('Please login to place an order')
+      navigate('/login')
+      return
+    }
     if (!selectedPayment) {
       alert('Please select a payment method')
       return
@@ -100,9 +107,114 @@ const Checkout = () => {
     }
 
     setPlacingOrder(true)
+    setOrderError('')
 
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      // Group order items by shop
+      const itemsByShop = {}
+      orderItems.forEach(item => {
+        const shopId = item.shop_id || 'unknown'
+        if (!itemsByShop[shopId]) {
+          itemsByShop[shopId] = []
+        }
+        itemsByShop[shopId].push(item)
+      })
+
+      // Process each shop's order
+      for (const [shopId, items] of Object.entries(itemsByShop)) {
+        if (shopId === 'unknown') {
+          console.error('Item missing shop_id:', items)
+          continue
+        }
+
+        const shopTotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+
+        // 1. Create order in database with full customer info
+        const { data: orderData, error: orderError } = await supabase
+          .from('orders')
+          .insert({
+            customer_id: user.id,
+            shop_id: shopId,
+            total_amount: shopTotal,
+            payment_method: selectedPayment,
+            shipping_address: shippingAddress,
+            contact_number: contactNumber,
+            customer_name: user.name || user.full_name || user.email,
+            customer_email: user.email,
+            customer_phone: contactNumber || user.phone || '',
+            customer_profile_image: user.profileImage || user.profile_image || '',
+            status: 'pending',
+            created_at: new Date().toISOString() // Explicit order time
+          })
+          .select()
+          .single()
+
+        if (orderError) {
+          console.error('Error creating order:', orderError)
+          console.error('Order error details:', {
+            message: orderError.message,
+            details: orderError.details,
+            hint: orderError.hint,
+            code: orderError.code
+          })
+          throw new Error(`Failed to create order: ${orderError.message}`)
+        }
+        
+        console.log('✅ Order created successfully:', orderData)
+
+        // 2. Create order items and update stock
+        for (const item of items) {
+          // Create order item
+          const { data: orderItemData, error: orderItemError } = await supabase
+            .from('order_items')
+            .insert({
+              order_id: orderData.id,
+              product_id: item.id,
+              product_name: item.name,
+              quantity: item.quantity,
+              price: item.price
+            })
+            .select()
+            .single()
+
+          if (orderItemError) {
+            console.error('Error creating order item:', orderItemError)
+            console.error('Order item error details:', {
+              message: orderItemError.message,
+              details: orderItemError.details,
+              hint: orderItemError.hint,
+              code: orderItemError.code
+            })
+            throw new Error(`Failed to create order item: ${orderItemError.message}`)
+          }
+          
+          console.log('✅ Order item created successfully:', orderItemData)
+
+          // Decrement product stock
+          const { data: productData } = await supabase
+            .from('products')
+            .select('quantity, original_quantity')
+            .eq('id', item.id)
+            .single()
+
+          if (productData) {
+            const newQuantity = Math.max(0, productData.quantity - item.quantity)
+            const originalQty = productData.original_quantity || productData.quantity
+            
+            await supabase
+              .from('products')
+              .update({ 
+                quantity: newQuantity,
+                status: newQuantity === 0 ? 'out_of_stock' : newQuantity <= (originalQty * 0.1) ? 'low_stock' : 'active'
+              })
+              .eq('id', item.id)
+            
+            console.log(`Product ${item.name} stock updated: ${productData.quantity} -> ${newQuantity}`)
+          }
+        }
+      }
+
+      // Success - clear cart and show success message
       setPlacingOrder(false)
       setOrderPlaced(true)
       
@@ -113,9 +225,17 @@ const Checkout = () => {
 
       // Redirect after 3 seconds
       setTimeout(() => {
-        navigate('/dashboard')
+        navigate('/')
       }, 3000)
-    }, 2000)
+
+    } catch (error) {
+      console.error('❌ Error placing order:', error)
+      console.error('Full error object:', error)
+      const errorMessage = error.message || error.details || 'Failed to place order. Please try again.'
+      setOrderError(errorMessage)
+      setPlacingOrder(false)
+      alert(`Order failed: ${errorMessage}\n\nCheck browser console for details.`)
+    }
   }
 
   if (orderPlaced) {
@@ -129,7 +249,7 @@ const Checkout = () => {
           <p className="text-gray-600 mb-4">
             Your order has been successfully placed. You will receive a confirmation shortly.
           </p>
-          <p className="text-sm text-gray-500">Redirecting to dashboard...</p>
+          <p className="text-sm text-gray-500">Redirecting to home...</p>
         </div>
       </div>
     )
@@ -219,7 +339,7 @@ const Checkout = () => {
                 </h2>
                 {user && (
                   <button
-                    onClick={() => navigate('/dashboard')}
+                    onClick={() => navigate('/')}
                     className="text-sm text-primary hover:underline flex items-center space-x-1"
                   >
                     <Edit2 className="w-4 h-4" />
@@ -370,6 +490,13 @@ const Checkout = () => {
                     <CheckCircle className="w-4 h-4" />
                     <span className="text-sm font-medium">{selectedPayment}</span>
                   </div>
+                </div>
+              )}
+
+              {/* Error Message */}
+              {orderError && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-600">{orderError}</p>
                 </div>
               )}
 

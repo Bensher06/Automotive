@@ -21,7 +21,6 @@ import Checkout from './pages/Checkout'
 import MechanicFinder from './pages/MechanicFinder'
 import MechanicTracking from './pages/MechanicTracking'
 import ServiceBooking from './pages/ServiceBooking'
-import Dashboard from './pages/Dashboard'
 import ShopDetails from './pages/ShopDetails'
 import AdminDashboard from './pages/AdminDashboard'
 import StoreDashboard from './pages/StoreDashboard'
@@ -285,16 +284,6 @@ function App() {
               <Layout>
                 <ProtectedRoute>
                   <ServiceBooking />
-                </ProtectedRoute>
-              </Layout>
-            }
-          />
-          <Route
-            path="/dashboard"
-            element={
-              <Layout>
-                <ProtectedRoute>
-                  <Dashboard />
                 </ProtectedRoute>
               </Layout>
             }

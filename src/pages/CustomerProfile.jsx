@@ -347,7 +347,7 @@ const CustomerProfile = () => {
               <h1 className="text-2xl font-bold">{profileData.name || 'User'}</h1>
               <p className="text-blue-100">{profileData.email}</p>
               <span className="inline-block mt-2 px-3 py-1 bg-white/20 rounded-full text-sm">
-                {user?.role === 'customer' ? '🏍️ Rider' : user?.role || 'Customer'}
+                {user?.role === 'customer' ? '🏍️ Motorist' : user?.role || 'Customer'}
               </span>
             </div>
 

@@ -189,7 +189,7 @@ const MechanicTracking = () => {
     }
     // In a real app, this would submit to API
     alert('Thank you for your feedback!')
-    navigate('/dashboard')
+    navigate('/')
   }
 
   if (!mechanic) {
@@ -401,7 +401,7 @@ const MechanicTracking = () => {
 
             {/* Skip Button */}
             <button
-              onClick={() => navigate('/dashboard')}
+              onClick={() => navigate('/')}
               className="w-full mt-3 text-gray-600 hover:text-gray-800 text-sm"
             >
               Skip for now

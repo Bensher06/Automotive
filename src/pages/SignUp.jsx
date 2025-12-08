@@ -111,11 +111,11 @@ const SignUp = () => {
     }
   }, [isModalOpen])
 
-  // Only Rider and Shop Owner can sign up - Admin accounts are hardcoded
+  // Only Motorist and Shop Owner can sign up - Admin accounts are hardcoded
   const roles = [
     {
       id: 'customer',
-      name: "I'm a Rider",
+      name: "I'm a Motorist",
       description: 'Find mechanics, shop for parts, and get roadside assistance',
       icon: User,
       color: 'bg-amber-500',

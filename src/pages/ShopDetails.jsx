@@ -187,7 +187,9 @@ const ShopDetails = () => {
       name: product.name,
       price: product.price,
       image: product.image_url,
-      shopId: shop.id,
+      shop_id: shop.id,
+      shopId: shop.id, // Keep both for compatibility
+      shop: shop.name,
       shopName: shop.name,
       quantity: 1
     })
