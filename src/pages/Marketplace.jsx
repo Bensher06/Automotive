@@ -400,7 +400,7 @@ const Marketplace = () => {
                 <div
                   key={product.id}
                   onClick={() => handleProductClick(product)}
-                  className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-xl transition-all cursor-pointer transform hover:-translate-y-1"
+                  className="product-card cursor-pointer"
                 >
                   {/* Product Image */}
                   <div className="aspect-square bg-gray-100 relative">
@@ -459,7 +459,7 @@ const Marketplace = () => {
         {/* Product Detail Modal */}
         {showProductModal && selectedProduct && (
           <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto modal-shadow">
               {/* Close Button */}
               <div className="sticky top-0 bg-white p-4 border-b flex justify-between items-center">
                 <h2 className="text-xl font-bold text-gray-900">Product Details</h2>

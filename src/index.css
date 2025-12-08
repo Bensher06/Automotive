@@ -20,6 +20,127 @@ body {
   min-height: 100vh;
 }
 
+/* ============================================
+   CROSS-PLATFORM SHADOW UTILITIES
+   Works on Web, Android WebView, iOS Safari
+   ============================================ */
+
+/* Enhanced card shadow - works on all platforms */
+@layer utilities {
+  .shadow-card {
+    /* Standard box-shadow for web */
+    box-shadow: 
+      0 4px 6px -1px rgba(0, 0, 0, 0.1),
+      0 2px 4px -2px rgba(0, 0, 0, 0.1);
+    /* iOS Safari webkit shadow */
+    -webkit-box-shadow: 
+      0 4px 6px -1px rgba(0, 0, 0, 0.1),
+      0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  }
+
+  .shadow-card-hover {
+    /* Deeper shadow for hover/active state */
+    box-shadow: 
+      0 20px 25px -5px rgba(0, 0, 0, 0.1),
+      0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    -webkit-box-shadow: 
+      0 20px 25px -5px rgba(0, 0, 0, 0.1),
+      0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  }
+
+  .shadow-card-deep {
+    /* Extra deep shadow - like elevation 8 on Android */
+    box-shadow: 
+      0 10px 15px -3px rgba(0, 0, 0, 0.15),
+      0 4px 6px -4px rgba(0, 0, 0, 0.15),
+      0 0 0 1px rgba(0, 0, 0, 0.02);
+    -webkit-box-shadow: 
+      0 10px 15px -3px rgba(0, 0, 0, 0.15),
+      0 4px 6px -4px rgba(0, 0, 0, 0.15),
+      0 0 0 1px rgba(0, 0, 0, 0.02);
+  }
+}
+
+/* Hardware-accelerated transforms for smooth mobile animations */
+.transform {
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  will-change: transform, box-shadow;
+}
+
+/* Product card specific styles - consistent across platforms */
+.product-card {
+  background: white;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  /* Multi-layered shadow for depth - works on Android & iOS */
+  box-shadow: 
+    0 1px 3px rgba(0, 0, 0, 0.08),
+    0 4px 6px rgba(0, 0, 0, 0.06),
+    0 8px 12px rgba(0, 0, 0, 0.04);
+  -webkit-box-shadow: 
+    0 1px 3px rgba(0, 0, 0, 0.08),
+    0 4px 6px rgba(0, 0, 0, 0.06),
+    0 8px 12px rgba(0, 0, 0, 0.04);
+  /* GPU acceleration for smooth transitions */
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  -webkit-transition: -webkit-transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.product-card:hover,
+.product-card:active {
+  /* Elevated shadow on interaction - similar to Android elevation 12 */
+  box-shadow: 
+    0 4px 8px rgba(0, 0, 0, 0.1),
+    0 12px 20px rgba(0, 0, 0, 0.1),
+    0 20px 32px rgba(0, 0, 0, 0.08);
+  -webkit-box-shadow: 
+    0 4px 8px rgba(0, 0, 0, 0.1),
+    0 12px 20px rgba(0, 0, 0, 0.1),
+    0 20px 32px rgba(0, 0, 0, 0.08);
+  -webkit-transform: translateY(-4px) translateZ(0);
+  transform: translateY(-4px) translateZ(0);
+}
+
+/* Modal shadow - prominent and visible on all platforms */
+.modal-shadow {
+  box-shadow: 
+    0 25px 50px -12px rgba(0, 0, 0, 0.25),
+    0 12px 24px -8px rgba(0, 0, 0, 0.15);
+  -webkit-box-shadow: 
+    0 25px 50px -12px rgba(0, 0, 0, 0.25),
+    0 12px 24px -8px rgba(0, 0, 0, 0.15);
+}
+
+/* Stats card shadow */
+.stats-card {
+  box-shadow: 
+    0 2px 4px rgba(0, 0, 0, 0.06),
+    0 4px 8px rgba(0, 0, 0, 0.04);
+  -webkit-box-shadow: 
+    0 2px 4px rgba(0, 0, 0, 0.06),
+    0 4px 8px rgba(0, 0, 0, 0.04);
+  border-radius: 0.75rem;
+}
+
+/* Touch-friendly active states for mobile */
+@media (hover: none) and (pointer: coarse) {
+  .product-card:active {
+    box-shadow: 
+      0 4px 8px rgba(0, 0, 0, 0.12),
+      0 12px 20px rgba(0, 0, 0, 0.12);
+    -webkit-box-shadow: 
+      0 4px 8px rgba(0, 0, 0, 0.12),
+      0 12px 20px rgba(0, 0, 0, 0.12);
+    -webkit-transform: translateY(-2px) scale(0.98);
+    transform: translateY(-2px) scale(0.98);
+  }
+}
+
 /* Custom Leaflet icon styles */
 .custom-car-icon {
   background: transparent !important;

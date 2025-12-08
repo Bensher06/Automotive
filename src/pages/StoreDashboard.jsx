@@ -1624,14 +1624,14 @@ const ProductsView = ({ dashboardData, setDashboardData, user, ownedShops, selec
 
   return (
     <div className="space-y-6">
-      {/* Stats Cards */}
+      {/* Stats Cards - with cross-platform shadows */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {stats.map((stat, index) => (
-          <div key={index} className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
+          <div key={index} className="bg-white stats-card p-6">
             <p className="text-sm text-gray-600 mb-1">{stat.label}</p>
             <div className="flex items-center justify-between">
               <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
-              <div className={`${stat.color} text-white p-3 rounded-lg`}>
+              <div className={`${stat.color} text-white p-3 rounded-xl`}>
                 <Package className="w-6 h-6" />
               </div>
             </div>
@@ -1677,60 +1677,102 @@ const ProductsView = ({ dashboardData, setDashboardData, user, ownedShops, selec
         </button>
       </div>
 
-      {/* Products Grid */}
-      <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Parts Inventory</h2>
-        {loading ? (
-          <div className="text-center py-12 text-gray-500">
-            <Loader2 className="w-12 h-12 mx-auto mb-4 text-primary animate-spin" />
-            <p>Loading products...</p>
-          </div>
-        ) : filteredProducts.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">
-            <Package className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-            <p>No products found matching your criteria.</p>
-            <p className="text-sm text-gray-400 mt-2">Click "Upload Product" to add your first product</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredProducts.map(product => {
-              const status = getStockStatus(product.quantity, product.original_quantity)
-              return (
-                <div 
-                  key={product.id} 
-                  onClick={() => setShowProductDetail(product)}
-                  className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow cursor-pointer bg-white"
-                >
-                  {/* Product Image */}
-                  <div className="w-full h-48 bg-gray-100 flex items-center justify-center overflow-hidden">
-                    {product.image_url ? (
-                      <img src={product.image_url} alt={product.name} className="w-full h-full object-contain" />
-                    ) : (
+      {/* Results Count - matching Marketplace */}
+      <div className="mb-4 text-gray-600">
+        {filteredProducts.length} product{filteredProducts.length !== 1 ? 's' : ''} in inventory
+      </div>
+
+      {/* Products Grid - matching Marketplace layout */}
+      {loading ? (
+        <div className="text-center py-12 bg-white rounded-lg">
+          <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-primary border-t-transparent mb-4"></div>
+          <p className="text-gray-600">Loading products...</p>
+        </div>
+      ) : filteredProducts.length === 0 ? (
+        <div className="text-center py-12 bg-white rounded-lg">
+          <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+          <p className="text-gray-600 text-lg">No products found</p>
+          <p className="text-gray-500 text-sm mt-2">
+            Click "Upload Product" to add your first product
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {filteredProducts.map(product => {
+            const status = getStockStatus(product.quantity, product.original_quantity)
+            const stockInfo = {
+              out: { label: 'Out of Stock', color: 'bg-red-100 text-red-800' },
+              low: { label: 'Low Stock', color: 'bg-amber-100 text-amber-800' },
+              in: { label: 'In Stock', color: 'bg-green-100 text-green-800' }
+            }[status]
+            return (
+              <div
+                key={product.id}
+                onClick={() => setShowProductDetail(product)}
+                className="product-card cursor-pointer"
+              >
+                {/* Product Image - matching Marketplace aspect-square */}
+                <div className="aspect-square bg-gray-100 relative">
+                  {product.image_url ? (
+                    <img
+                      src={product.image_url}
+                      alt={product.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
                       <Package className="w-16 h-16 text-gray-300" />
-                    )}
-                  </div>
-                  {/* Product Info */}
-                  <div className="p-4">
-                    <h3 className="font-semibold text-gray-900 truncate">{product.name}</h3>
-                    <p className="text-lg font-bold text-primary mt-1">₱{parseFloat(product.price).toLocaleString()}</p>
-                    <div className="flex items-center justify-between mt-2">
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusClass(status)}`}>
-                        {status === 'in' ? 'In Stock' : status === 'low' ? 'Low Stock' : 'Out of Stock'}
-                      </span>
-                      <span className="text-sm text-gray-500">{product.quantity} units</span>
                     </div>
+                  )}
+                  {/* Stock Badge - matching Marketplace style */}
+                  <span className={`absolute top-2 right-2 px-2 py-1 rounded-full text-xs font-medium ${stockInfo.color}`}>
+                    {stockInfo.label}
+                  </span>
+                  {/* Admin Quick Actions Overlay */}
+                  <div className="absolute bottom-2 left-2 right-2 flex justify-end space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setShowProductDetail(product)
+                      }}
+                      className="p-2 bg-primary text-white rounded-full shadow-lg hover:bg-primary-dark transition-colors"
+                      title="Edit Product"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
+                
+                {/* Product Info - matching Marketplace layout */}
+                <div className="p-4">
+                  <h3 className="font-semibold text-gray-900 mb-1 line-clamp-2">
+                    {product.name}
+                  </h3>
+                  {product.brand && (
+                    <div className="flex items-center text-sm text-gray-500 mb-2">
+                      <Store className="w-3 h-3 mr-1" />
+                      {product.brand}
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-xl font-bold text-primary">
+                      ₱{parseFloat(product.price).toLocaleString()}
+                    </span>
+                    <span className="text-sm text-gray-500">
+                      {product.quantity} units
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* Upload Product Modal */}
       {showUploadModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto modal-shadow">
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-bold text-gray-900">Upload Product</h2>
@@ -1885,135 +1927,158 @@ const ProductsView = ({ dashboardData, setDashboardData, user, ownedShops, selec
         </div>
       )}
 
-      {/* Product Detail Modal */}
+      {/* Product Detail Modal - matching Marketplace styling */}
       {showProductDetail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto modal-shadow">
+            {/* Sticky Header - matching Marketplace */}
+            <div className="sticky top-0 bg-white p-4 border-b flex justify-between items-center">
+              <h2 className="text-xl font-bold text-gray-900">Product Details</h2>
+              <button
+                onClick={() => setShowProductDetail(null)}
+                className="text-gray-400 hover:text-gray-600 p-2 rounded-full hover:bg-gray-100"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
             <div className="p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-gray-900">Product Details</h2>
-                <button onClick={() => setShowProductDetail(null)} className="text-gray-400 hover:text-gray-600">
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Product Image */}
-                <div className="w-full h-64 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
-                  {showProductDetail.image_url ? (
-                    <img src={showProductDetail.image_url} alt={showProductDetail.name} className="max-w-full max-h-64 object-contain" />
-                  ) : (
+              {/* Product Image - matching Marketplace aspect-video */}
+              <div className="aspect-video bg-gray-100 rounded-xl overflow-hidden mb-6">
+                {showProductDetail.image_url ? (
+                  <img
+                    src={showProductDetail.image_url}
+                    alt={showProductDetail.name}
+                    className="w-full h-full object-contain"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
                     <Package className="w-24 h-24 text-gray-300" />
-                  )}
-                </div>
-
-                {/* Product Info */}
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="text-2xl font-bold text-gray-900">{showProductDetail.name}</h3>
-                    {showProductDetail.brand && (
-                      <p className="text-gray-500">Brand: {showProductDetail.brand}</p>
-                    )}
                   </div>
-
-                  <p className="text-3xl font-bold text-primary">₱{parseFloat(showProductDetail.price).toLocaleString()}</p>
-
-                  {/* Quantity Control */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Quantity in Stock</label>
-                    <div className="flex items-center space-x-3">
-                      <button
-                        onClick={() => handleQuantityChange(showProductDetail.id, Math.max(0, showProductDetail.quantity - 1))}
-                        className="w-10 h-10 flex items-center justify-center bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors text-xl font-bold"
-                      >
-                        -
-                      </button>
-                      <span className="w-16 text-center text-xl font-semibold">{showProductDetail.quantity}</span>
-                      <button
-                        onClick={() => handleQuantityChange(showProductDetail.id, showProductDetail.quantity + 1)}
-                        className="w-10 h-10 flex items-center justify-center bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors text-xl font-bold"
-                      >
-                        +
-                      </button>
-                    </div>
-                    {/* Stock Status Indicator */}
-                    {showProductDetail.original_quantity > 0 && (
-                      <div className="mt-3">
-                        <div className="flex items-center justify-between text-sm mb-1">
-                          <span className="text-gray-500">Stock Level</span>
-                          <span className={`font-medium ${
-                            getStockStatus(showProductDetail.quantity, showProductDetail.original_quantity) === 'out' ? 'text-red-600' :
-                            getStockStatus(showProductDetail.quantity, showProductDetail.original_quantity) === 'low' ? 'text-amber-600' :
-                            'text-green-600'
-                          }`}>
-                            {Math.round((showProductDetail.quantity / showProductDetail.original_quantity) * 100)}% 
-                            ({getStockStatus(showProductDetail.quantity, showProductDetail.original_quantity) === 'out' ? 'Out of Stock' :
-                              getStockStatus(showProductDetail.quantity, showProductDetail.original_quantity) === 'low' ? 'Low Stock' : 'In Stock'})
-                          </span>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div 
-                            className={`h-2 rounded-full transition-all ${
-                              getStockStatus(showProductDetail.quantity, showProductDetail.original_quantity) === 'out' ? 'bg-red-500' :
-                              getStockStatus(showProductDetail.quantity, showProductDetail.original_quantity) === 'low' ? 'bg-amber-500' :
-                              'bg-green-500'
-                            }`}
-                            style={{ width: `${Math.min(100, (showProductDetail.quantity / showProductDetail.original_quantity) * 100)}%` }}
-                          />
-                        </div>
-                        <p className="text-xs text-gray-400 mt-1">Original: {showProductDetail.original_quantity} units</p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Ratings */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Ratings</label>
-                    <div className="flex items-center space-x-1">
-                      {[1, 2, 3, 4, 5].map(star => (
-                        <span key={star} className={`text-2xl ${star <= (showProductDetail.ratings || 0) ? 'text-amber-400' : 'text-gray-300'}`}>
-                          ★
-                        </span>
-                      ))}
-                      <span className="text-sm text-gray-500 ml-2">
-                        ({showProductDetail.ratings_count || 0} reviews)
-                      </span>
-                    </div>
-                  </div>
-
-                  {showProductDetail.description && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                      <p className="text-gray-600">{showProductDetail.description}</p>
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
 
-              {/* Warning */}
-              <div className="mt-6 bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start space-x-3">
-                <AlertTriangle className="w-6 h-6 text-amber-600 flex-shrink-0" />
+              {/* Product Info - matching Marketplace layout */}
+              <div className="space-y-4">
+                {/* Name & Price */}
                 <div>
-                  <p className="font-medium text-amber-800">Product is for Pickup Only</p>
-                  <p className="text-sm text-amber-700">Customers must collect their orders from your shop location.</p>
+                  <h3 className="text-2xl font-bold text-gray-900 mb-2">{showProductDetail.name}</h3>
+                  <p className="text-3xl font-bold text-primary">₱{parseFloat(showProductDetail.price).toLocaleString()}</p>
                 </div>
-              </div>
 
-              {/* Action Buttons */}
-              <div className="mt-6 flex space-x-3">
-                <button
-                  onClick={() => handleDeleteProduct(showProductDetail.id)}
-                  className="px-4 py-3 border border-red-300 text-red-600 rounded-lg font-medium hover:bg-red-50 transition-colors flex items-center space-x-2"
-                >
-                  <X className="w-5 h-5" />
-                  <span>Delete Product</span>
-                </button>
-                <button
-                  onClick={() => setShowProductDetail(null)}
-                  className="flex-1 px-4 py-3 bg-primary text-white rounded-lg font-semibold hover:bg-primary-dark transition-colors"
-                >
-                  Close
-                </button>
+                {/* Details Grid - matching Marketplace */}
+                <div className="grid grid-cols-2 gap-4">
+                  {showProductDetail.brand && (
+                    <div className="bg-gray-50 p-3 rounded-lg">
+                      <p className="text-sm text-gray-500">Brand</p>
+                      <p className="font-medium text-gray-900">{showProductDetail.brand}</p>
+                    </div>
+                  )}
+                  <div className="bg-gray-50 p-3 rounded-lg">
+                    <p className="text-sm text-gray-500">Category</p>
+                    <p className="font-medium text-gray-900">{showProductDetail.category || 'General'}</p>
+                  </div>
+                  <div className="bg-gray-50 p-3 rounded-lg">
+                    <p className="text-sm text-gray-500">Stock</p>
+                    <p className={`font-medium ${
+                      showProductDetail.quantity <= 0 ? 'text-red-600' : 
+                      showProductDetail.quantity <= (showProductDetail.original_quantity * 0.1) ? 'text-amber-600' : 'text-green-600'
+                    }`}>
+                      {showProductDetail.quantity} available
+                    </p>
+                  </div>
+                  {(showProductDetail.ratings || 0) > 0 && (
+                    <div className="bg-gray-50 p-3 rounded-lg">
+                      <p className="text-sm text-gray-500">Rating</p>
+                      <div className="flex items-center space-x-1">
+                        <span className="text-amber-400">★</span>
+                        <span className="font-medium text-gray-900">{(showProductDetail.ratings || 0).toFixed(1)}</span>
+                        <span className="text-sm text-gray-500">({showProductDetail.ratings_count || 0} reviews)</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Description */}
+                {showProductDetail.description && (
+                  <div>
+                    <p className="text-sm text-gray-500 mb-1">Description</p>
+                    <p className="text-gray-700">{showProductDetail.description}</p>
+                  </div>
+                )}
+
+                {/* Stock Management - Admin specific */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <label className="block text-sm font-medium text-blue-800 mb-3">📦 Stock Management</label>
+                  <div className="flex items-center justify-center space-x-4">
+                    <button
+                      onClick={() => handleQuantityChange(showProductDetail.id, Math.max(0, showProductDetail.quantity - 1))}
+                      className="w-12 h-12 flex items-center justify-center bg-white border-2 border-blue-300 text-blue-600 rounded-xl hover:bg-blue-50 transition-colors text-xl font-bold shadow-sm"
+                    >
+                      -
+                    </button>
+                    <span className="w-20 text-center text-2xl font-bold text-gray-900">{showProductDetail.quantity}</span>
+                    <button
+                      onClick={() => handleQuantityChange(showProductDetail.id, showProductDetail.quantity + 1)}
+                      className="w-12 h-12 flex items-center justify-center bg-white border-2 border-blue-300 text-blue-600 rounded-xl hover:bg-blue-50 transition-colors text-xl font-bold shadow-sm"
+                    >
+                      +
+                    </button>
+                  </div>
+                  {/* Stock Progress Bar */}
+                  {showProductDetail.original_quantity > 0 && (
+                    <div className="mt-4">
+                      <div className="flex items-center justify-between text-sm mb-1">
+                        <span className="text-blue-700">Stock Level</span>
+                        <span className={`font-medium ${
+                          getStockStatus(showProductDetail.quantity, showProductDetail.original_quantity) === 'out' ? 'text-red-600' :
+                          getStockStatus(showProductDetail.quantity, showProductDetail.original_quantity) === 'low' ? 'text-amber-600' :
+                          'text-green-600'
+                        }`}>
+                          {Math.round((showProductDetail.quantity / showProductDetail.original_quantity) * 100)}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-blue-100 rounded-full h-2">
+                        <div 
+                          className={`h-2 rounded-full transition-all ${
+                            getStockStatus(showProductDetail.quantity, showProductDetail.original_quantity) === 'out' ? 'bg-red-500' :
+                            getStockStatus(showProductDetail.quantity, showProductDetail.original_quantity) === 'low' ? 'bg-amber-500' :
+                            'bg-green-500'
+                          }`}
+                          style={{ width: `${Math.min(100, (showProductDetail.quantity / showProductDetail.original_quantity) * 100)}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-blue-600 mt-1">Original inventory: {showProductDetail.original_quantity} units</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Pickup Warning - matching Marketplace */}
+                <div className="flex items-start space-x-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-amber-800">Product is for Pickup Only</p>
+                    <p className="text-sm text-amber-700">This product must be picked up at the shop location.</p>
+                  </div>
+                </div>
+
+                {/* Action Buttons - matching Marketplace rounded-xl style */}
+                <div className="flex flex-col sm:flex-row gap-3 pt-4">
+                  <button
+                    onClick={() => handleDeleteProduct(showProductDetail.id)}
+                    className="flex-1 py-3 px-6 rounded-xl font-semibold transition-colors flex items-center justify-center space-x-2 bg-red-50 text-red-600 border-2 border-red-200 hover:bg-red-100"
+                  >
+                    <X className="w-5 h-5" />
+                    <span>Delete Product</span>
+                  </button>
+                  <button
+                    onClick={() => setShowProductDetail(null)}
+                    className="flex-1 py-3 px-6 rounded-xl font-semibold bg-primary text-white hover:bg-primary-dark transition-colors flex items-center justify-center space-x-2"
+                  >
+                    <Check className="w-5 h-5" />
+                    <span>Done</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
